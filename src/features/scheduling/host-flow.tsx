@@ -142,13 +142,13 @@ export function Shell({
   className?: string
 }) {
   return (
-    <Card className={`w-full max-w-xl gap-0 overflow-hidden rounded-[2rem] border-border/70 bg-card/95 py-0 shadow-[0_24px_80px_-38px_color-mix(in_oklab,var(--primary)_32%,transparent)] ${className}`}>
+    <Card className={`min-w-0 w-full max-w-xl gap-0 overflow-hidden rounded-[2rem] border-border/70 bg-card/95 py-0 shadow-[0_24px_80px_-38px_color-mix(in_oklab,var(--primary)_32%,transparent)] ${className}`}>
       <CardHeader className="gap-2 px-6 pb-5 pt-7 text-center sm:px-9 sm:pt-9">
         {eyebrow ? <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">{eyebrow}</p> : null}
         <h1 className="font-heading text-3xl font-semibold leading-tight text-foreground sm:text-4xl">{title}</h1>
         {copy ? <p className="mx-auto max-w-md text-sm leading-6 text-muted-foreground">{copy}</p> : null}
       </CardHeader>
-      <CardContent className="px-6 pb-7 sm:px-9">{children}</CardContent>
+      <CardContent className="min-w-0 px-6 pb-7 sm:px-9">{children}</CardContent>
       {footer ? <CardFooter className="justify-between border-t bg-secondary/35 px-6 py-4 sm:px-9">{footer}</CardFooter> : null}
     </Card>
   )
@@ -272,7 +272,7 @@ export function CreatePlan({
           Plan name
           <Input required maxLength={120} value={plan.name} onChange={(event) => onPlanChange({ ...plan, name: event.target.value })} className="h-11 rounded-xl" />
         </label>
-        <Suspense fallback={<div className="h-[4.75rem] animate-pulse rounded-2xl bg-secondary/70" aria-label="Loading date picker" />}>
+        <Suspense fallback={<div className="h-[4.75rem] animate-pulse motion-reduce:animate-none rounded-2xl bg-secondary/70" aria-label="Loading date picker" />}>
           <WarmlyDateRangePicker
             value={plan.dateRange}
             onChange={(dateRange) => dateRange && onPlanChange({ ...plan, dateRange })}
@@ -285,7 +285,7 @@ export function CreatePlan({
           <p className="text-sm font-semibold">How long?</p>
           <div className="flex flex-wrap gap-2">
             {[30, 45, 60, 90, 120].map((duration) => (
-              <Button key={duration} size="sm" variant={plan.duration === duration ? "default" : "outline"} onClick={() => onPlanChange({ ...plan, duration })}>
+              <Button key={duration} size="sm" variant={plan.duration === duration ? "default" : "outline"} aria-pressed={plan.duration === duration} onClick={() => onPlanChange({ ...plan, duration })}>
                 {duration < 60 ? `${duration} min` : `${duration / 60} hr`}
               </Button>
             ))}
@@ -350,9 +350,9 @@ export function InviteFriends({
       copy="They will only share when they are free. Their calendar details stay theirs."
       footer={<><Button variant="ghost" onClick={onBack}><ArrowLeft /> Back</Button><Button onClick={onContinue}>Find moments <ArrowRight /></Button></>}
     >
-      <div className="grid gap-6">
-        <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); inviteEmail() }}>
-          <Input type="email" inputMode="email" autoComplete="email" placeholder="friend@example.com" value={email} onChange={(event) => setEmail(event.target.value)} className="h-10 rounded-xl" />
+      <div className="grid min-w-0 gap-6">
+        <form className="grid min-w-0 items-center gap-2 min-[380px]:grid-cols-[minmax(0,1fr)_auto]" onSubmit={(event) => { event.preventDefault(); inviteEmail() }}>
+          <Input type="email" inputMode="email" autoComplete="email" aria-label="Friend’s email address" placeholder="friend@example.com" value={email} onChange={(event) => setEmail(event.target.value)} className="h-10 rounded-xl" />
           <Button type="submit"><Plus /> Invite</Button>
         </form>
         {showRecent ? <div>
@@ -372,25 +372,34 @@ export function InviteFriends({
             })}
           </div>
         </div> : <p className="text-xs leading-5 text-muted-foreground">Copy each private invitation link and send it to your friend. Email delivery is not enabled yet.</p>}
-        <div>
+        <div className="min-w-0">
           <p className="mb-1 text-sm font-semibold">People in this plan</p>
           <p className="mb-3 text-xs leading-5 text-muted-foreground">Ready means they joined and shared availability. Invited means you’re waiting for their reply.</p>
-          <div className="grid gap-2">
+          <div className="grid min-w-0 gap-2">
             {people.map((person) => (
-              <div key={person.email} className="flex items-center gap-3 rounded-2xl border bg-secondary/30 p-3">
-                <span className="grid size-9 place-items-center rounded-full bg-primary/12 text-xs font-semibold text-primary">{person.initials}</span>
+              <div key={person.email} className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 rounded-2xl border bg-secondary/30 p-3 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto]">
+                <span className="grid size-9 place-items-center rounded-full bg-primary/5 text-xs font-semibold text-primary">{person.initials}</span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold">{person.name}</p>
                   <p className="truncate text-xs text-muted-foreground">{person.status === "host" ? `${connectedCalendarCount} calendars connected` : person.email}</p>
                 </div>
                 <Badge variant={person.status === "host" ? "default" : "secondary"} className="capitalize">{person.status}</Badge>
-                {person.inviteUrl ? <Button variant="ghost" size="icon" aria-label={`Copy invitation for ${person.name}`} onClick={() => navigator.clipboard.writeText(person.inviteUrl!).catch(() => undefined)}><Copy /></Button> : null}
-                {onReissue && person.invitationId && !person.inviteUrl ? <Button variant="ghost" size="sm" onClick={() => onReissue(person)}>New link</Button> : null}
-                {onRemove && person.status !== "host" ? <Button variant="ghost" size="sm" onClick={() => onRemove(person)}>Remove</Button> : null}
+                {person.inviteUrl || (onReissue && person.invitationId) || (onRemove && person.status !== "host") ? (
+                  <div className="col-span-3 flex min-w-0 flex-wrap justify-end gap-1 sm:col-span-1">
+                    {person.inviteUrl ? <Button variant="ghost" size="icon" aria-label={`Copy invitation for ${person.name}`} onClick={() => navigator.clipboard.writeText(person.inviteUrl!).catch(() => undefined)}><Copy /></Button> : null}
+                    {onReissue && person.invitationId && !person.inviteUrl ? <Button variant="ghost" size="sm" aria-label={`New invitation link for ${person.name}`} onClick={() => onReissue(person)}>New link</Button> : null}
+                    {onRemove && person.status !== "host" ? <Button variant="ghost" size="sm" aria-label={`Remove ${person.name}`} onClick={() => onRemove(person)}>Remove</Button> : null}
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>
-          {people.filter((person) => person.inviteUrl).map((person) => <label key={person.email} className="mt-3 grid gap-1 text-xs text-muted-foreground">Private link for {person.name}<Input readOnly value={person.inviteUrl} onFocus={(event) => event.target.select()} /></label>)}
+          {people.filter((person) => person.inviteUrl).map((person) => (
+            <label key={person.email} className="mt-3 grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 text-xs text-muted-foreground">
+              <span className="min-w-0 wrap-anywhere">Private link for {person.name}</span>
+              <Input readOnly value={person.inviteUrl} onFocus={(event) => event.target.select()} />
+            </label>
+          ))}
           {onReissue ? <p className="mt-3 text-xs text-muted-foreground">Links are shown only when created. New link invalidates the previous invitation.</p> : null}
         </div>
         {onPreviewGuest ? <Button variant="ghost" className="mx-auto" onClick={onPreviewGuest}>Preview the guest invite</Button> : null}
