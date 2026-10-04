@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Warmly scheduling prototype</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --page:#faf7fa; --surface:#fffdfd; --surface-2:#f4eef3; --ink:#282225;
+      --muted:#70666b; --line:#e8dfe6; --accent:#76506a; --accent-2:#a96977;
+      --accent-soft:#f3e8ef; --sage:#5d7565; --sage-soft:#e8f0ea; --sun:#d79a4b;
+      --shadow:0 18px 55px rgba(65,45,52,.10); --shadow-sm:0 6px 22px rgba(65,45,52,.08);
+      --radius:24px; --radius-sm:15px;
+    }
+    [data-theme="dark"] {
+      color-scheme: dark;
+      --page:#191618; --surface:#231f21; --surface-2:#30292c; --ink:#f8f1ed;
+      --muted:#c0b3b8; --line:#41383c; --accent:#d8a9c0; --accent-2:#e2a0a8;
+      --accent-soft:#3a2932; --sage:#a9c6b0; --sage-soft:#29362d; --sun:#efb765;
+      --shadow:0 18px 55px rgba(0,0,0,.26); --shadow-sm:0 6px 22px rgba(0,0,0,.22);
+    }
+    * { box-sizing:border-box; }
+    html { min-height:100%; background:var(--page); }
+    body { margin:0; color:var(--ink); font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:
+      radial-gradient(circle at 8% 12%, rgba(169,105,119,.10), transparent 28rem),
+      radial-gradient(circle at 94% 88%, rgba(93,117,101,.10), transparent 28rem), var(--page); min-height:100vh; }
+    button,input { font:inherit; }
+    button { color:inherit; }
+    button:focus-visible,input:focus-visible { outline:3px solid color-mix(in srgb,var(--accent) 35%,transparent); outline-offset:3px; }
+    .shell { width:min(1120px,calc(100% - 36px)); margin:0 auto; min-height:100vh; display:flex; flex-direction:column; }
+    header { height:84px; display:flex; align-items:center; justify-content:space-between; gap:20px; }
+    .brand { display:flex; align-items:center; gap:11px; font-weight:760; letter-spacing:-.02em; }
+    .mark { width:34px; height:34px; border-radius:44% 56% 58% 42%; background:var(--accent); color:var(--surface); display:grid; place-items:center; transform:rotate(-5deg); box-shadow:var(--shadow-sm); }
+    .mark svg { width:18px; transform:rotate(5deg); }
+    .header-actions { display:flex; gap:9px; align-items:center; }
+    .icon-button { border:1px solid var(--line); background:var(--surface); width:40px; height:40px; border-radius:50%; display:grid; place-items:center; cursor:pointer; }
+    .icon-button svg { width:18px; }
+    .progress { position:relative; width:118px; height:26px; }
+    .progress svg { position:absolute; inset:2px 0 0; width:118px; height:22px; color:color-mix(in srgb,var(--accent) 42%,var(--line)); }
+    .progress span { position:absolute; top:8px; width:11px; height:11px; border:2px solid var(--page); border-radius:50% 44% 52% 46%; background:var(--line); transition:background .25s,transform .25s; }
+    .progress span:nth-of-type(1) { left:1px; }.progress span:nth-of-type(2) { left:35px; }.progress span:nth-of-type(3) { left:70px; }.progress span:nth-of-type(4) { left:105px; }
+    .progress span.done { background:var(--accent); transform:scale(1.15) rotate(8deg); }
+    .progress { display:none; }
+    main { flex:1; padding:26px 0 64px; display:grid; place-items:start center; }
+    .view { width:min(900px,100%); display:none; animation:enter .3s ease both; }
+    .view.active { display:block; }
+    @keyframes enter { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+    .eyebrow { font-size:.8rem; font-weight:760; color:var(--accent); text-transform:uppercase; letter-spacing:.12em; margin:0 0 14px; }
+    h1 { font-family:Georgia,"Times New Roman",serif; font-weight:500; font-size:clamp(2.35rem,7vw,4.6rem); line-height:.98; letter-spacing:-.045em; margin:0; max-width:12ch; }
+    .title-row { display:flex; align-items:flex-end; gap:22px; }
+    .title-aside { display:flex; flex-direction:column; align-items:center; gap:3px; margin-bottom:2px; }
+    .journey-mark { width:130px; height:62px; color:var(--accent-2); overflow:visible; }
+    .journey-track { stroke:currentColor; opacity:.35; stroke-dasharray:2 5; }
+    .journey-fill { stroke:currentColor; stroke-dasharray:100; stroke-dashoffset:var(--journey-left,85); transition:stroke-dashoffset .55s ease; }
+    .journey-mark.step-0 { --journey-left:84; }.journey-mark.step-1 { --journey-left:58; }.journey-mark.step-2 { --journey-left:29; }.journey-mark.step-3 { --journey-left:8; }.journey-mark.step-4 { --journey-left:0; }
+    .journey-bird { stroke:currentColor; fill:transparent; transition:fill .4s,opacity .4s; }
+    .journey-mark.step-4 .journey-bird { fill:currentColor; opacity:.92; }
+    .reaction { margin:0; max-width:125px; color:var(--accent); font-family:Georgia,"Times New Roman",serif; font-size:.86rem; font-style:italic; line-height:1.2; text-align:center; transition:opacity .15s,transform .15s; }
+    .lead { color:var(--muted); font-size:1.03rem; margin:18px 0 0; }
+    .layout { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(260px,.8fr); gap:26px; margin-top:40px; align-items:start; }
+    .card { border:1px solid var(--line); background:color-mix(in srgb,var(--surface) 94%,transparent); border-radius:var(--radius); box-shadow:var(--shadow); padding:28px; }
+    .card.soft { background:transparent; box-shadow:none; border:0; padding:5px 2px 0; }
+    .card.soft .field { padding:16px 0; margin:0; border-bottom:1px solid var(--line); }
+    .card.soft .field:last-of-type { border-bottom:0; }
+    .card.soft .privacy { background:var(--accent-soft); border-radius:16px; padding:13px 14px; }
+    .section-label { font-size:.85rem; font-weight:760; margin:0 0 13px; }
+    .ideas { display:grid; grid-template-columns:repeat(3,1fr); gap:11px; }
+    .idea { --idea-color:#e8c5d3; position:relative; min-height:128px; border:1px solid color-mix(in srgb,var(--idea-color) 55%,var(--line)); background:color-mix(in srgb,var(--idea-color) 28%,var(--surface)); border-radius:21px 21px 21px 11px; padding:14px; text-align:left; cursor:pointer; overflow:hidden; transition:transform .16s,border .16s,box-shadow .16s,background .16s; }
+    .idea:nth-child(2) { --idea-color:#f1c9a8; border-radius:19px 19px 10px 19px; }
+    .idea:nth-child(3) { --idea-color:#bcd8c3; }
+    .idea:nth-child(4) { --idea-color:#c9d8e8; border-radius:19px 10px 19px 19px; }
+    .idea:nth-child(5) { --idea-color:#ccc7e6; }
+    .idea:nth-child(6) { --idea-color:#e5ccd8; border-radius:10px 19px 19px 19px; }
+    .idea:hover { transform:translateY(-2px); box-shadow:var(--shadow-sm); }
+    .idea.active { border-color:var(--accent); background:color-mix(in srgb,var(--idea-color) 48%,var(--surface)); box-shadow:inset 0 0 0 1px var(--accent),0 7px 18px color-mix(in srgb,var(--idea-color) 28%,transparent); transform:translateY(-2px) rotate(-.35deg); }
+    .idea.active::after { content:"✓"; position:absolute; top:10px; right:10px; width:22px; height:22px; border-radius:50% 44% 52% 46%; display:grid; place-items:center; background:var(--accent); color:white; font-size:.72rem; font-weight:900; transform:rotate(7deg); }
+    .idea-icon { width:46px; height:46px; border-radius:18px 18px 18px 9px; background:color-mix(in srgb,var(--idea-color) 62%,var(--surface)); color:var(--accent); display:grid; place-items:center; margin-bottom:12px; transform:rotate(-2deg); box-shadow:0 4px 10px color-mix(in srgb,var(--idea-color) 32%,transparent); }
+    .idea:nth-child(even) .idea-icon { transform:rotate(2deg); }
+    .idea.active .idea-icon { background:var(--surface); }
+    .idea-icon svg { width:29px; height:29px; }
+    .idea strong { display:block; font-size:.9rem; }
+    .idea small { display:block; color:var(--muted); margin-top:4px; font-size:0; line-height:1.25; }
+    .idea small::before { font-size:.72rem; }
+    .idea:nth-child(1) small::before { content:"Long overdue · 1 hour"; }
+    .idea:nth-child(2) small::before { content:"Bring an appetite · 90 min"; }
+    .idea:nth-child(3) small::before { content:"Fresh air · 1 hour"; }
+    .idea:nth-child(4) small::before { content:"Warm cup · 45 min"; }
+    .idea:nth-child(5) small::before { content:"Playfully serious · 2 hours"; }
+    .idea:nth-child(6) small::before { content:"Your idea · make it yours"; }
+    .field { margin-top:22px; }
+    label { display:block; font-size:.82rem; font-weight:740; margin:0 0 8px; }
+    input { width:100%; border:1px solid var(--line); background:var(--surface); color:var(--ink); border-radius:14px; padding:14px 15px; transition:border .15s,box-shadow .15s; }
+    input:focus { border-color:var(--accent); box-shadow:0 0 0 4px var(--accent-soft); outline:0; }
+    .duration { display:flex; flex-wrap:wrap; gap:8px; }
+    .pill { border:1px solid var(--line); background:var(--surface); border-radius:999px; padding:9px 13px; cursor:pointer; font-weight:680; font-size:.84rem; }
+    .pill.active { background:var(--accent); border-color:var(--accent); color:var(--surface); }
+    .pill.daypart { display:inline-flex; align-items:center; gap:6px; }
+    .pill.daypart svg { width:14px; height:14px; }
+    .date-grid { display:grid; grid-template-columns:1fr 1fr; gap:11px; }
+    .mini-stat { padding:15px; border-radius:16px; background:var(--surface); border:1px solid var(--line); }
+    .mini-stat span { display:block; color:var(--muted); font-size:.76rem; margin-bottom:5px; }
+    .mini-stat strong { font-size:.93rem; }
+    .date-field { position:relative; }
+    .date-choice { position:relative; display:block; width:100%; text-align:left; cursor:pointer; color:var(--ink); }
+    .date-choice strong { display:block; padding-right:24px; }
+    .date-icon { position:absolute; right:14px; bottom:14px; color:var(--muted); font-size:.9rem; }
+    .date-value { display:none; }
+    .date-popover { position:absolute; z-index:20; top:calc(100% - 2px); right:0; width:292px; padding:14px; border:1px solid var(--line); border-radius:19px; background:var(--surface); box-shadow:0 18px 42px color-mix(in srgb,var(--ink) 16%,transparent); }
+    .date-popover[hidden] { display:none; }
+    .date-picker-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:11px; }
+    .date-picker-head strong { font-family:Georgia,'Times New Roman',serif; font-size:1.05rem; }
+    .month-nav { width:30px; height:30px; border:1px solid var(--line); border-radius:50%; background:var(--surface); color:var(--ink); cursor:pointer; }
+    .calendar-weekdays,.calendar-days { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+    .calendar-weekdays span { text-align:center; color:var(--muted); font-size:.65rem; font-weight:700; padding:3px 0 5px; }
+    .calendar-day { aspect-ratio:1; border:0; border-radius:11px; background:transparent; color:var(--ink); font-size:.75rem; cursor:pointer; }
+    .calendar-day:hover { background:var(--accent-soft); }
+    .calendar-day.in-range { border-radius:9px; background:color-mix(in srgb,var(--accent-soft) 70%,transparent); }
+    .calendar-day.selected { background:var(--accent); color:white; font-weight:800; box-shadow:0 4px 10px color-mix(in srgb,var(--accent) 20%,transparent); }
+    .calendar-day.blank { visibility:hidden; }
+    .privacy { display:flex; align-items:flex-start; gap:11px; color:var(--muted); font-size:.82rem; line-height:1.45; margin-top:18px; }
+    .privacy svg { flex:0 0 auto; width:17px; color:var(--sage); }
+    .actions { display:flex; align-items:center; justify-content:space-between; gap:14px; margin-top:28px; }
+    .friend-seed { display:flex; align-items:center; min-width:130px; color:var(--muted); }
+    .mini-avatar { width:29px; height:29px; border:2px solid var(--page); border-radius:50% 48% 52% 46%; background:var(--accent-soft); color:var(--accent); display:grid; place-items:center; font-size:.67rem; font-weight:800; }
+    .friend-seed small { margin-left:8px; font-size:.72rem; font-weight:650; }
+    .button { border:0; border-radius:999px; padding:13px 19px; font-weight:760; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:9px; transition:transform .15s,box-shadow .15s,background .15s; }
+    .button:hover { transform:translateY(-1px); }
+    .button.primary { background:var(--accent); color:var(--surface); box-shadow:0 8px 24px color-mix(in srgb,var(--accent) 25%,transparent); }
+    .button.secondary { background:var(--surface); border:1px solid var(--line); }
+    .button.ghost { background:transparent; color:var(--muted); padding-left:0; }
+    .button svg { width:17px; }
+    .button:disabled { opacity:.45; cursor:not-allowed; transform:none; box-shadow:none; }
+    .people { display:grid; gap:10px; }
+    .person { display:grid; grid-template-columns:42px 1fr auto; align-items:center; gap:12px; padding:13px 14px; border:1px solid var(--line); border-radius:17px; background:var(--surface); }
+    .avatar { width:42px; height:42px; border-radius:50%; display:grid; place-items:center; font-size:.75rem; font-weight:800; background:var(--accent-soft); color:var(--accent); }
+    .person:nth-child(2) .avatar { background:#f7dfcf; color:#925f49; }
+    .person:nth-child(3) .avatar { background:#e3eddf; color:#567059; border:1px dashed #78907a; }
+    .person:nth-child(4) .avatar { background:#e6e3f2; color:#696087; border:1px dashed #9188ad; }
+    .person { animation:friend-in .32s ease both; }
+    .person:nth-child(2) { animation-delay:.06s; }
+    .person:nth-child(3) { animation-delay:.12s; }
+    .person:nth-child(4) { animation-delay:.18s; }
+    @keyframes friend-in { from { opacity:0; transform:translateY(5px) scale(.98); } to { opacity:1; transform:none; } }
+    .person strong,.person small { display:block; }
+    .person small { color:var(--muted); margin-top:3px; }
+    .status { border-radius:999px; padding:6px 9px; font-weight:750; font-size:.72rem; background:var(--surface-2); color:var(--muted); }
+    .status.ready { background:var(--sage-soft); color:var(--sage); }
+    .email-row { display:grid; grid-template-columns:1fr auto; gap:9px; margin-bottom:18px; }
+    .email-row .button { border-radius:14px; }
+    .list-label { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin:0 0 9px; font-size:.76rem; font-weight:800; }
+    .list-label small { color:var(--muted); font-weight:400; }
+    .recent-people { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:18px; }
+    .recent-person { display:inline-flex; align-items:center; gap:7px; padding:7px 10px 7px 7px; border:1px solid var(--line); border-radius:999px; background:var(--surface); color:var(--ink); cursor:pointer; }
+    .recent-person span { width:24px; height:24px; border-radius:50%; display:grid; place-items:center; background:var(--accent-soft); color:var(--accent); font-size:.62rem; font-weight:800; }
+    .recent-person:hover { border-color:color-mix(in srgb,var(--accent) 45%,var(--line)); }
+    .recent-person:disabled { opacity:.5; cursor:default; }
+    .status-key { margin:8px 0 12px; color:var(--muted); font-size:.7rem; line-height:1.35; }
+    .moments { display:grid; gap:11px; }
+    .moment { border:1px solid var(--line); background:var(--surface); border-radius:19px; padding:18px; display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:15px; cursor:pointer; text-align:left; transition:border .15s,box-shadow .15s,transform .15s; }
+    .moment:hover { transform:translateY(-2px); box-shadow:var(--shadow-sm); }
+    .moment.active { border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent); }
+    .day { width:54px; border-radius:14px; background:var(--surface-2); text-align:center; padding:8px 4px; }
+    .day span { display:block; color:var(--muted); text-transform:uppercase; font-size:.65rem; font-weight:800; letter-spacing:.09em; }
+    .day strong { font-family:Georgia,serif; font-size:1.45rem; font-weight:500; }
+    .moment-copy strong,.moment-copy small { display:block; }
+    .moment-copy small { color:var(--muted); margin-top:4px; }
+    .fit { text-align:right; }
+    .fit::before { content:""; display:block; width:54px; height:20px; margin:0 0 4px auto; background:radial-gradient(circle at 9px 10px,#d9afc4 0 7px,var(--surface) 7.5px 9px,transparent 9.5px),radial-gradient(circle at 25px 10px,#efd0bc 0 7px,var(--surface) 7.5px 9px,transparent 9.5px),radial-gradient(circle at 41px 10px,#bfd8c5 0 7px,var(--surface) 7.5px 9px,transparent 9.5px); }
+    .fit strong { font-family:Georgia,serif; font-size:1.35rem; font-weight:500; display:block; }
+    .fit span { color:var(--sage); font-size:.72rem; font-weight:800; }
+    .summary { display:grid; gap:0; }
+    .summary-row { display:grid; grid-template-columns:120px 1fr; gap:18px; padding:16px 0; border-bottom:1px solid var(--line); }
+    .summary-row:last-child { border-bottom:0; }
+    .summary-row span { color:var(--muted); }
+    .summary-row:nth-child(3) strong::before { content:""; display:inline-block; width:50px; height:18px; margin-right:7px; vertical-align:middle; background:radial-gradient(circle at 8px 9px,#d9afc4 0 6px,var(--surface) 6.5px 8px,transparent 8.5px),radial-gradient(circle at 23px 9px,#efd0bc 0 6px,var(--surface) 6.5px 8px,transparent 8.5px),radial-gradient(circle at 38px 9px,#bfd8c5 0 6px,var(--surface) 6.5px 8px,transparent 8.5px); }
+    .done-box { text-align:center; padding:45px 28px; }
+    .done-box > .journey-mark { display:block; margin:0 auto 2px; }
+    .done-symbol { width:68px; height:68px; border-radius:50%; background:var(--sage-soft); color:var(--sage); display:grid; place-items:center; margin:0 auto 20px; }
+    .done-symbol svg { width:30px; }
+    .auth-view { max-width:760px; margin:58px auto 0; }
+    .auth-view h1 { max-width:620px; }
+    .auth-grid { display:grid; grid-template-columns:1.06fr .94fr; gap:18px; align-items:stretch; margin-top:28px; }
+    .welcome-scene { min-height:280px; display:flex; flex-direction:column; justify-content:space-between; background:linear-gradient(145deg,color-mix(in srgb,var(--accent-soft) 75%,var(--surface)),var(--surface)); }
+    .social-orbit { position:relative; width:230px; height:165px; margin:2px auto 10px; }
+    .orbit-heart { position:absolute; left:79px; top:44px; width:72px; height:72px; border-radius:27px 27px 27px 15px; background:var(--accent); color:white; display:grid; place-items:center; transform:rotate(-3deg); box-shadow:0 10px 22px color-mix(in srgb,var(--accent) 22%,transparent); }
+    .orbit-heart svg { width:34px; }
+    .orbit-friend { position:absolute; width:58px; height:58px; border-radius:50%; display:grid; place-items:center; font-size:0; border:4px solid var(--surface); z-index:1; }
+    .orbit-friend::before { content:""; position:absolute; top:6px; width:29px; height:32px; border-radius:50% 50% 46% 46%; background:#efc8ad; box-shadow:inset 0 10px 0 #6d4a45; z-index:1; }
+    .orbit-friend::after { content:""; position:absolute; left:7px; bottom:3px; width:36px; height:20px; border-radius:50% 50% 10px 10px; background:#b78072; }
+    .orbit-friend.one { left:28px; top:20px; background:#efd0bc; }.orbit-friend.two { right:20px; top:12px; background:#cfe1d1; }.orbit-friend.three { right:38px; bottom:1px; background:#ded8ed; }
+    .orbit-friend.one::before { width:40px; height:40px; top:2px; background:radial-gradient(ellipse 6% 15% at 64% 48%,#503837 0 90%,transparent 100%),radial-gradient(ellipse 3% 8% at 67% 62%,#503837 0 90%,transparent 100%),radial-gradient(ellipse at 50% 63%,#efc8ad 0 34%,transparent 36%),radial-gradient(circle at 50% 10%,#503837 0 20%,transparent 22%),radial-gradient(ellipse at 50% 40%,#503837 0 43%,transparent 45%); box-shadow:none; border-radius:50%; }
+    .orbit-friend.two::before { background:#d6aa8d; box-shadow:inset 0 9px 0 #4d403e; }.orbit-friend.two::after { background:#71907a; }
+    .orbit-friend.three::before { width:35px; height:40px; top:3px; background:radial-gradient(ellipse at 47% 58%,#f3cfba 0 39%,transparent 41%),radial-gradient(circle at 78% 57%,#d4a34e 0 24%,transparent 26%),radial-gradient(ellipse at 48% 29%,#e5bc63 0 51%,transparent 53%); box-shadow:none; border-radius:48% 54% 38% 44% / 46% 48% 56% 58%; transform:rotate(-3deg); }.orbit-friend.three::after { background:#8c82aa; }
+    .auth-card { position:relative; min-height:280px; }
+    .auth-card h2 { position:absolute; left:20px; right:20px; top:46%; transform:translateY(-50%); margin:0; text-align:center; font-family:Georgia,'Times New Roman',serif; font-size:2.08rem; font-style:normal; font-weight:400; line-height:1.04; letter-spacing:-.035em; }
+    .auth-actions { position:absolute; left:18px; right:18px; bottom:18px; display:flex; flex-direction:column; align-items:center; }
+    .auth-card .button { width:auto; margin:0; padding-left:16px; padding-right:16px; }
+    .auth-card .section-label { position:absolute; top:20px; left:20px; display:inline-flex; align-items:center; gap:6px; padding:7px 11px; border-radius:999px; background:var(--accent-soft); color:var(--accent); letter-spacing:.04em; }
+    .auth-card .section-label::before { content:"♡"; font-size:.9rem; }
+    .welcome-scene .reaction { font-size:.85rem; max-width:190px; }
+    .google-g { width:19px; height:19px; border-radius:50%; display:grid; place-items:center; background:white; color:#76506a; font:800 .82rem Arial,sans-serif; }
+    .quiet-note { color:var(--muted); font-size:.77rem; text-align:center; margin:11px 0 0; line-height:1.4; }
+    .calendar-privacy { display:grid; gap:9px; margin:20px 0 22px; }
+    .privacy-callout { display:flex; align-items:flex-start; gap:7px; margin:7px 0 18px; padding:0; color:var(--muted); font-size:.72rem; line-height:1.35; }
+    .privacy-callout span { color:var(--accent); font-size:.9rem; line-height:1.1; }
+    .permission-card #connect-google { display:flex; margin-left:auto; margin-right:auto; }
+    .busy-row { display:grid; grid-template-columns:58px 1fr; align-items:center; gap:12px; color:var(--muted); font-size:.72rem; }
+    .busy-track { height:28px; border-radius:10px; background:var(--surface-2); position:relative; overflow:hidden; }
+    .busy-track::before,.busy-track::after { content:""; position:absolute; top:5px; height:18px; border-radius:7px; background:var(--accent-soft); }
+    .busy-track::before { left:14%; width:23%; }.busy-track::after { right:12%; width:31%; }
+    .calendar-list { display:grid; gap:9px; margin-top:14px; }
+    .calendar-choice { display:grid; grid-template-columns:12px 1fr auto; align-items:center; gap:10px; border:1px solid var(--line); border-radius:14px; background:var(--surface); padding:12px; cursor:pointer; text-align:left; }
+    .calendar-dot { width:10px; height:10px; border-radius:50%; background:#a96d83; }.calendar-choice:nth-child(2) .calendar-dot { background:#6f9077; }.calendar-choice:nth-child(3) .calendar-dot { background:#cc9b55; }
+    .toggle { width:34px; height:20px; border-radius:99px; background:var(--line); padding:3px; transition:background .2s; }.toggle::after { content:""; display:block; width:14px; height:14px; border-radius:50%; background:white; transition:transform .2s; box-shadow:0 1px 4px #0002; }
+    .calendar-choice.active .toggle { background:var(--accent); }.calendar-choice.active .toggle::after { transform:translateX(14px); }
+    .calendar-choice small { display:block; color:var(--muted); margin-top:2px; }
+    .done-box h1 { margin:auto; max-width:14ch; font-size:clamp(2.2rem,6vw,3.8rem); }
+    .done-box p { color:var(--muted); }
+    .preview-link { width:100%; margin-top:14px; color:var(--accent); font-weight:800; }
+    .guest-host { display:flex; align-items:center; gap:11px; margin-bottom:18px; }
+    .guest-host .avatar { flex:0 0 auto; }
+    .guest-host strong,.guest-host small { display:block; }
+    .guest-host small { color:var(--muted); margin-top:3px; }
+    .guest-choice .choice-mark { width:26px; height:26px; display:grid; place-items:center; border:1px solid var(--line); border-radius:50%; color:transparent; font-weight:900; }
+    .guest-choice.active .choice-mark { border-color:var(--accent); background:var(--accent); color:white; }
+    .guest-help { margin:0 0 15px; color:var(--muted); font-size:.78rem; line-height:1.45; }
+    .guest-submit[disabled] { opacity:.45; cursor:not-allowed; }
+    .toast { position:fixed; left:50%; bottom:24px; transform:translate(-50%,16px); background:var(--ink); color:var(--surface); border-radius:999px; padding:11px 16px; font-size:.82rem; opacity:0; pointer-events:none; transition:.22s; }
+    .toast.show { opacity:1; transform:translate(-50%,0); }
+    @media (max-width:760px) {
+      .shell { width:min(100% - 24px,600px); }
+      header { height:70px; }
+      .progress { transform:scale(.88); transform-origin:right center; }
+      main { padding-top:18px; }
+      h1 { font-size:clamp(2.5rem,13vw,3.7rem); }
+      .journey-mark { width:84px; height:46px; }
+      .reaction { display:none; }
+      .layout { grid-template-columns:1fr; margin-top:28px; }
+      .auth-grid { grid-template-columns:1fr; }
+      .card { padding:20px; border-radius:20px; }
+      .ideas { grid-template-columns:repeat(2,1fr); }
+      .date-grid { grid-template-columns:1fr; }
+      .actions { position:sticky; bottom:0; background:linear-gradient(transparent,var(--page) 28%); padding:28px 0 6px; margin-top:12px; }
+      .moment { grid-template-columns:auto 1fr; }
+      .fit { grid-column:2; text-align:left; display:flex; align-items:baseline; gap:8px; }
+      .summary-row { grid-template-columns:1fr; gap:5px; }
+    }
+    @media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation-duration:.01ms!important; transition-duration:.01ms!important; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="brand"><span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 18.5S5.5 15 5.5 10.2A3.7 3.7 0 0 1 12 7.7a3.7 3.7 0 0 1 6.5 2.5C18.5 15 12 18.5 12 18.5Z" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Warmly</div>
+      <div class="header-actions">
+        <div class="progress" aria-label="Plan progress"><svg viewBox="0 0 118 22" fill="none" aria-hidden="true"><path d="M6 11c10-11 21 10 34 0s23-9 35 0 22 10 37 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-dasharray="2.5 3.5"/></svg><span class="done"></span><span></span><span></span><span></span></div>
+        <button class="icon-button" id="theme" aria-label="Toggle theme"><svg viewBox="0 0 24 24" fill="none"><path d="M20 15.3A8.5 8.5 0 1 1 8.7 4a7 7 0 0 0 11.3 11.3Z" stroke="currentColor" stroke-width="1.8"/></svg></button>
+      </div>
+    </header>
+
+    <main>
+      <section class="view active auth-view" data-step="-2">
+        <p class="eyebrow">Welcome to Warmly</p><h1>Make time for your people.</h1>
+        <div class="auth-grid">
+          <div class="card welcome-scene"><div class="social-orbit" aria-hidden="true"><span class="orbit-friend one">MA</span><span class="orbit-heart"><svg viewBox="0 0 24 24" fill="none"><path d="M12 18.5S5.5 15 5.5 10.2A3.7 3.7 0 0 1 12 7.7a3.7 3.7 0 0 1 6.5 2.5C18.5 15 12 18.5 12 18.5Z" stroke="currentColor" stroke-width="1.8"/></svg></span><span class="orbit-friend two">TH</span><span class="orbit-friend three">SA</span></div><p class="reaction">Less scheduling. More seeing each other.</p></div>
+          <div class="card auth-card"><p class="section-label">Sign in</p><h2>Your plans,<br>in one place.</h2><div class="auth-actions"><button class="button primary" id="sign-in"><span class="google-g">G</span>Continue with Google</button><p class="quiet-note">This signs you in. Calendar access comes next.</p></div></div>
+        </div>
+      </section>
+
+      <section class="view auth-view" data-step="-1">
+        <p class="eyebrow">Your availability</p><h1>Bring your calendars.</h1>
+        <div class="auth-grid">
+          <div class="card permission-card"><p class="section-label">Calendar access</p><h2>We only see when you’re available.</h2><p class="privacy-callout"><span>♡</span>Event names, guests, and details stay private.</p><div class="calendar-privacy" aria-label="Private calendar preview"><div class="busy-row"><span>Monday</span><span class="busy-track"></span></div><div class="busy-row"><span>Tuesday</span><span class="busy-track"></span></div><div class="busy-row"><span>Wednesday</span><span class="busy-track"></span></div></div><button class="button primary" id="connect-google"><span class="google-g">G</span>Connect Google Calendar</button></div>
+          <div class="card soft"><p class="section-label">Calendars to include</p><div class="calendar-list"><button class="calendar-choice active"><span class="calendar-dot"></span><span><strong>Personal</strong><small>you@gmail.com</small></span><span class="toggle"></span></button><button class="calendar-choice active"><span class="calendar-dot"></span><span><strong>Work</strong><small>you@work.com</small></span><span class="toggle"></span></button><button class="calendar-choice"><span class="calendar-dot"></span><span><strong>Birthdays</strong><small>Google Calendar</small></span><span class="toggle"></span></button></div><div class="actions"><button class="button ghost" id="setup-back">Back</button><button class="button primary" id="continue-setup" disabled>Start a plan</button></div></div>
+        </div>
+      </section>
+
+      <section class="view" data-step="0">
+        <p class="eyebrow">New plan</p><div class="title-row"><h1>What are we making time for?</h1><div class="title-aside"><svg class="journey-mark step-0" viewBox="0 0 106 54" fill="none" aria-hidden="true"><path class="journey-track" pathLength="100" d="M3 39c15-25 25 14 42-9 10-14 6-27-2-25-8 2-3 20 12 29 13 8 30 7 48-7" stroke-width="2.2" stroke-linecap="round"/><path class="journey-fill" pathLength="100" d="M3 39c15-25 25 14 42-9 10-14 6-27-2-25-8 2-3 20 12 29 13 8 30 7 48-7" stroke-width="2.4" stroke-linecap="round"/><path class="journey-bird" d="M85 15c3-7 10-8 14-3-5 1-9 4-11 9m-3-6c-5-4-10-2-12 3 6-1 10 1 15 3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><p class="reaction" id="reaction">A proper catch-up sounds lovely.</p></div></div>
+        <div class="layout">
+          <div class="card">
+            <p class="section-label">Pick a little plan</p>
+            <div class="ideas" role="list">
+              <button class="idea active" data-name="A proper catch-up" data-duration="60"><span class="idea-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M4 5.5h10a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H9l-3.5 2.7v-2.7H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2Z" fill="currentColor" opacity=".16"/><path d="M4 5.5h10a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H9l-3.5 2.7v-2.7H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.55" stroke-linejoin="round"/><path d="M10 9.2c.8-1.1 2.6-.4 2.6.9 0 1.4-2.6 2.7-2.6 2.7s-2.6-1.3-2.6-2.7c0-1.3 1.8-2 2.6-.9Z" fill="currentColor"/><path d="M17 10.5h2a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2v2l-2.6-2H13a2 2 0 0 1-2-2" stroke="currentColor" stroke-width="1.55" stroke-linecap="round"/></svg></span><strong>Catch up</strong><small>1 hour</small></button>
+              <button class="idea" data-name="Dinner together" data-duration="90"><span class="idea-icon"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="6.2" fill="currentColor" opacity=".14"/><circle cx="12" cy="12" r="5" stroke="currentColor" stroke-width="1.55"/><circle cx="12" cy="12" r="2.2" stroke="currentColor" stroke-width="1.4"/><path d="M4 4v5m-2-5v3c0 1.4.8 2 2 2s2-.6 2-2V4M4 9v11M20 4c-2 1.5-2 5.5 0 7v9M17.5 4.5l.45 1.1 1.1.45-1.1.45-.45 1.1-.45-1.1-1.1-.45 1.1-.45.45-1.1Z" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"/></svg></span><strong>Dinner</strong><small>90 minutes</small></button>
+              <button class="idea" data-name="A walk together" data-duration="60"><span class="idea-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M5 18c4-8 8-4 14-12" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-dasharray="2.5 2.5"/><path d="M6.2 6.5c1.8.4 3.1 1.8 3.3 3.7-1.9-.2-3.3-1.5-3.7-3.3l.4-.4Zm11.2 7.2c-1.8.4-3.1 1.8-3.3 3.7 1.9-.2 3.3-1.5 3.7-3.3l-.4-.4Z" fill="currentColor" opacity=".22" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round"/><ellipse cx="4.5" cy="18.5" rx="2" ry="3" transform="rotate(35 4.5 18.5)" stroke="currentColor" stroke-width="1.45"/><ellipse cx="18.8" cy="5.2" rx="2" ry="3" transform="rotate(35 18.8 5.2)" stroke="currentColor" stroke-width="1.45"/></svg></span><strong>Walk</strong><small>1 hour</small></button>
+              <button class="idea" data-name="Coffee and conversation" data-duration="45"><span class="idea-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M4.5 9h12v5.2a5 5 0 0 1-5 5h-2a5 5 0 0 1-5-5V9Z" fill="currentColor" opacity=".15"/><path d="M4.5 9h12v5.2a5 5 0 0 1-5 5h-2a5 5 0 0 1-5-5V9Zm12 2h1.3a2.7 2.7 0 0 1 0 5.4h-1.7M7 5.7c0-1.2 1.5-1.3 1.5-2.7m3 2.7C11.5 4.5 13 4.3 13 3" stroke="currentColor" stroke-width="1.55" stroke-linecap="round"/><path d="M10.5 12.5c.8-1 2.5-.3 2.5.9 0 1.3-2.5 2.5-2.5 2.5S8 14.7 8 13.4c0-1.2 1.7-1.9 2.5-.9Z" fill="currentColor"/></svg></span><strong>Coffee</strong><small>45 minutes</small></button>
+              <button class="idea" data-name="Game night" data-duration="120"><span class="idea-icon"><svg viewBox="0 0 24 24" fill="none"><rect x="4" y="5" width="13" height="13" rx="3" fill="currentColor" opacity=".14"/><rect x="4" y="5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.55"/><circle cx="8" cy="9" r="1" fill="currentColor"/><circle cx="13" cy="14" r="1" fill="currentColor"/><circle cx="8" cy="14" r="1" fill="currentColor"/><circle cx="13" cy="9" r="1" fill="currentColor"/><path d="m19.5 3 .55 1.45L21.5 5l-1.45.55L19.5 7l-.55-1.45L17.5 5l1.45-.55L19.5 3Zm1 9 .35.9.9.35-.9.35-.35.9-.35-.9-.9-.35.9-.35.35-.9Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></span><strong>Game night</strong><small>2 hours</small></button>
+              <button class="idea" data-name="" data-duration="60"><span class="idea-icon"><svg viewBox="0 0 24 24" fill="none"><path d="m5 19 10.5-10.5 2 2L7 21 5 19Z" fill="currentColor" opacity=".18"/><path d="m5 19 10.5-10.5 2 2L7 21 5 19Zm11.5-9.5-2-2" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"/><path d="m7 3 .75 2.25L10 6l-2.25.75L7 9l-.75-2.25L4 6l2.25-.75L7 3Zm12 10 .55 1.45L21 15l-1.45.55L19 17l-.55-1.45L17 15l1.45-.55L19 13Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span><strong>Something else</strong><small>Make it yours</small></button>
+            </div>
+            <div class="field"><label for="plan-name">Plan name</label><input id="plan-name" value="A proper catch-up" autocomplete="off"></div>
+          </div>
+          <aside class="card soft">
+            <div class="field"><label>How long?</label><div class="duration"><button class="pill">45 min</button><button class="pill active">1 hour</button><button class="pill">90 min</button><button class="pill">2 hours</button></div></div>
+            <div class="field date-field"><label>Between</label><div class="date-grid"><button type="button" class="mini-stat date-choice" data-date-target="from"><span>From</span><strong id="date-from-display">Mon, Oct 12</strong><span class="date-icon">▦</span></button><button type="button" class="mini-stat date-choice" data-date-target="until"><span>Until</span><strong id="date-until-display">Sun, Oct 18</strong><span class="date-icon">▦</span></button></div><input class="date-value" id="date-from" type="date" value="2026-10-12" tabindex="-1" aria-hidden="true"><input class="date-value" id="date-until" type="date" value="2026-10-18" tabindex="-1" aria-hidden="true"><div class="date-popover" id="date-popover" role="dialog" aria-label="Choose a date" hidden><div class="date-picker-head"><button class="month-nav" type="button" id="month-prev" aria-label="Previous month">‹</button><strong id="calendar-month">October 2026</strong><button class="month-nav" type="button" id="month-next" aria-label="Next month">›</button></div><div class="calendar-weekdays" aria-hidden="true"><span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div><div class="calendar-days" id="calendar-days"></div></div></div>
+            <div class="field"><label>Best time?</label><div class="duration"><button class="pill daypart active"><svg viewBox="0 0 24 24" fill="none"><path d="m12 3 1.2 3.8L17 8l-3.8 1.2L12 13l-1.2-3.8L7 8l3.8-1.2L12 3Zm6 10 .7 2.3L21 16l-2.3.7L18 19l-.7-2.3L15 16l2.3-.7L18 13Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>Any time</button><button class="pill daypart"><svg viewBox="0 0 24 24" fill="none"><path d="M4 18h16M7 18a5 5 0 0 1 10 0M12 4v3M5.8 7.8 8 10m10.2-2.2L16 10" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>Morning</button><button class="pill daypart"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.7"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4m0-14.2-1.4 1.4M6.3 17.7l-1.4 1.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>Afternoon</button><button class="pill daypart"><svg viewBox="0 0 24 24" fill="none"><path d="M19 15.5A7.5 7.5 0 0 1 8.5 5 6.8 6.8 0 1 0 19 15.5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>Evening</button></div></div>
+            <div class="privacy"><svg viewBox="0 0 24 24" fill="none"><rect x="5" y="10" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M8 10V7a4 4 0 0 1 8 0v3" stroke="currentColor" stroke-width="1.8"/></svg><span>Only free or busy. Never the details.</span></div>
+            <div class="actions"><div class="friend-seed" aria-label="You are the host"><span class="mini-avatar">YOU</span><small>just you, for now</small></div><button class="button primary next">Invite friends <svg viewBox="0 0 24 24" fill="none"><path d="m9 5 7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="view" data-step="1">
+        <p class="eyebrow plan-eyebrow">A proper catch-up</p><div class="title-row"><h1>Who should be there?</h1><div class="title-aside"><svg class="journey-mark step-1" viewBox="0 0 106 54" fill="none" aria-hidden="true"><path class="journey-track" pathLength="100" d="M3 39c15-25 25 14 42-9 10-14 6-27-2-25-8 2-3 20 12 29 13 8 30 7 48-7" stroke-width="2.2" stroke-linecap="round"/><path class="journey-fill" pathLength="100" d="M3 39c15-25 25 14 42-9 10-14 6-27-2-25-8 2-3 20 12 29 13 8 30 7 48-7" stroke-width="2.4" stroke-linecap="round"/><path class="journey-bird" d="M85 15c3-7 10-8 14-3-5 1-9 4-11 9m-3-6c-5-4-10-2-12 3 6-1 10 1 15 3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></div>
+        <div class="layout">
+          <div class="card"><div class="email-row"><input id="friend-email" type="email" inputmode="email" autocomplete="email" aria-label="Friend email" placeholder="friend@example.com"><button class="button primary" id="invite">Invite</button></div><p class="list-label">Recent people <small>From earlier plans</small></p><div class="recent-people"><button class="recent-person" data-name="Maya" data-email="maya@example.com" data-initials="MA"><span>MA</span>Maya</button><button class="recent-person" data-name="Theo" data-email="theo@example.com" data-initials="TH"><span>TH</span>Theo</button><button class="recent-person" data-name="Sam" data-email="sam@example.com" data-initials="SA"><span>SA</span>Sam</button></div><p class="list-label">People in this plan</p><p class="status-key">Ready means they joined and shared availability. Invited means you’re waiting for their reply.</p><div class="people" id="plan-people"><div class="person" data-email="you"><span class="avatar">YO</span><div><strong>You</strong><small>2 calendars connected</small></div><span class="status ready">Host</span></div></div></div>
+          <aside class="card soft"><p class="section-label">The plan</p><div class="mini-stat"><span>When</span><strong id="summary-window">Oct 12–18 · any time</strong></div><div class="mini-stat" style="margin-top:10px"><span>Length</span><strong id="summary-duration">1 hour</strong></div><div class="privacy"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3 4 6v5c0 5 3.4 8 8 10 4.6-2 8-5 8-10V6l-8-3Z" stroke="currentColor" stroke-width="1.8"/><path d="m9 12 2 2 4-4" stroke="currentColor" stroke-width="1.8"/></svg><span>Invite links are private, single use, and tied to each email address.</span></div><button type="button" class="button ghost preview-link" id="preview-guest">Preview the guest invite</button><div class="actions"><button class="button ghost back">Back</button><button class="button primary next">Find moments</button></div></aside>
+        </div>
+      </section>
+
+      <section class="view" data-step="2">
+        <p class="eyebrow">4 of 5 calendars ready</p><div class="title-row"><h1>These moments look good.</h1><div class="title-aside"><svg class="journey-mark step-2" viewBox="0 0 106 54" fill="none" aria-hidden="true"><path class="journey-track" pathLength="100" d="M3 39c15-25 25 14 42-9 10-14 6-27-2-25-8 2-3 20 12 29 13 8 30 7 48-7" stroke-width="2.2" stroke-linecap="round"/><path class="journey-fill" pathLength="100" d="M3 39c15-25 25 14 42-9 10-14 6-27-2-25-8 2-3 20 12 29 13 8 30 7 48-7" stroke-width="2.4" stroke-linecap="round"/><path class="journey-bird" d="M85 15c3-7 10-8 14-3-5 1-9 4-11 9m-3-6c-5-4-10-2-12 3 6-1 10 1 15 3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></div>
+        <div class="layout">
+          <div class="card"><div class="moments"><button class="moment active"><span class="day"><span>Thu</span><strong>15</strong></span><span class="moment-copy"><strong>7:00–8:00 PM</strong><small>Maya prefers this time</small></span><span class="fit"><strong>4 of 5</strong><span>Best fit</span></span></button><button class="moment"><span class="day"><span>Fri</span><strong>16</strong></span><span class="moment-copy"><strong>6:30–7:30 PM</strong><small>Everyone has responded</small></span><span class="fit"><strong>3 of 5</strong><span>Works</span></span></button><button class="moment"><span class="day"><span>Sun</span><strong>18</strong></span><span class="moment-copy"><strong>7:30–8:30 PM</strong><small>One person is tentative</small></span><span class="fit"><strong>3 of 5</strong><span>Possible</span></span></button></div></div>
+          <aside class="card soft"><p class="section-label">Your time zone</p><div class="mini-stat"><span>Times shown in</span><strong>Europe/Lisbon</strong></div><div class="privacy"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" stroke="currentColor" stroke-width="1.5"/></svg><span>No perfect match? Turn the closest moments into a quick poll.</span></div><div class="actions"><button class="button ghost back">Back</button><button class="button primary next">Choose Thursday</button></div></aside>
+        </div>
+      </section>
+
+      <section class="view" data-step="3">
+        <p class="eyebrow">One last look</p><div class="title-row"><h1>Thursday feels good.</h1><div class="title-aside"><svg class="journey-mark step-3" viewBox="0 0 106 54" fill="none" aria-hidden="true"><path class="journey-track" pathLength="100" d="M3 39c15-25 25 14 42-9 10-14 6-27-2-25-8 2-3 20 12 29 13 8 30 7 48-7" stroke-width="2.2" stroke-linecap="round"/><path class="journey-fill" pathLength="100" d="M3 39c15-25 25 14 42-9 10-14 6-27-2-25-8 2-3 20 12 29 13 8 30 7 48-7" stroke-width="2.4" stroke-linecap="round"/><path class="journey-bird" d="M85 15c3-7 10-8 14-3-5 1-9 4-11 9m-3-6c-5-4-10-2-12 3 6-1 10 1 15 3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></div>
+        <div class="layout">
+          <div class="card"><div class="summary"><div class="summary-row"><span>Plan</span><strong id="summary-name">A proper catch-up</strong></div><div class="summary-row"><span>When</span><strong>Thu, Oct 15 · 7:00–8:00 PM</strong></div><div class="summary-row"><span>Guests</span><strong>Maya, Theo, Sam + 1</strong></div><div class="summary-row"><span>Organizer</span><strong>You · Personal calendar</strong></div><div class="summary-row"><span>Reminders</span><strong>Google Calendar defaults</strong></div></div></div>
+          <aside class="card soft"><p class="section-label">Ready to book</p><div class="mini-stat"><span>Availability</span><strong>Rechecked just now</strong></div><div class="privacy"><svg viewBox="0 0 24 24" fill="none"><path d="M8 3v3M16 3v3M4 9h16M6 5h12a2 2 0 0 1 2 2v13H4V7a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.8"/><path d="m9 14 2 2 4-4" stroke="currentColor" stroke-width="1.8"/></svg><span>Google event access is requested only when you create the event.</span></div><div class="actions"><button class="button ghost back">Back</button><button class="button primary" id="create">Create event</button></div></aside>
+        </div>
+      </section>
+
+      <section class="view" data-step="4"><div class="card done-box"><svg class="journey-mark step-4" viewBox="0 0 106 54" fill="none" aria-hidden="true"><path class="journey-track" pathLength="100" d="M3 39c15-25 25 14 42-9 10-14 6-27-2-25-8 2-3 20 12 29 13 8 30 7 48-7" stroke-width="2.2" stroke-linecap="round"/><path class="journey-fill" pathLength="100" d="M3 39c15-25 25 14 42-9 10-14 6-27-2-25-8 2-3 20 12 29 13 8 30 7 48-7" stroke-width="2.4" stroke-linecap="round"/><path class="journey-bird" d="M85 15c3-7 10-8 14-3-5 1-9 4-11 9m-3-6c-5-4-10-2-12 3 6-1 10 1 15 3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><div class="done-symbol"><svg viewBox="0 0 24 24" fill="none"><path d="m5 12 4 4L19 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div><p class="eyebrow">It’s a plan</p><h1>Thursday is for catching up.</h1><p>The invitation is ready in Google Calendar.</p><div class="actions" style="justify-content:center"><button class="button secondary" id="restart">Start another plan</button><button class="button primary">Open calendar</button></div></div></section>
+      <section class="view" data-step="5">
+        <p class="eyebrow">Private invitation</p><div class="title-row"><h1>Maya invited you.</h1></div>
+        <div class="layout">
+          <div class="card"><div class="guest-host"><span class="avatar">MA</span><div><strong>Maya</strong><small>wants to make time together</small></div></div><p class="section-label">The plan</p><h2>A proper catch-up</h2><div class="mini-stat"><span>Possible dates</span><strong>Oct 12–18</strong></div><div class="mini-stat" style="margin-top:10px"><span>Length</span><strong>1 hour · any time</strong></div></div>
+          <aside class="card soft"><p class="section-label">Join the plan</p><h2>Find times that work for you.</h2><div class="privacy"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3 4 6v5c0 5 3.4 8 8 10 4.6-2 8-5 8-10V6l-8-3Z" stroke="currentColor" stroke-width="1.8"/><path d="m9 12 2 2 4-4" stroke="currentColor" stroke-width="1.8"/></svg><span>Your event names and calendar details stay private.</span></div><button class="button primary" id="guest-continue" style="width:100%;justify-content:center">Share my availability</button><p class="quiet-note">If needed, we’ll ask you to sign in and connect a calendar first.</p><button class="button ghost preview-link" id="guest-back">Back to host view</button></aside>
+        </div>
+      </section>
+
+      <section class="view" data-step="6">
+        <p class="eyebrow">Choose every time that works</p><div class="title-row"><h1>When could you make it?</h1></div>
+        <div class="layout">
+          <div class="card"><p class="guest-help">Your connected calendar ruled out busy times. Select as many of these shared moments as you like.</p><div class="moments"><button class="moment guest-choice"><span class="day"><span>Thu</span><strong>15</strong></span><span class="moment-copy"><strong>7:00–8:00 PM</strong><small>Available on your calendar</small></span><span class="choice-mark">✓</span></button><button class="moment guest-choice"><span class="day"><span>Fri</span><strong>16</strong></span><span class="moment-copy"><strong>6:30–7:30 PM</strong><small>Available on your calendar</small></span><span class="choice-mark">✓</span></button><button class="moment guest-choice"><span class="day"><span>Sun</span><strong>18</strong></span><span class="moment-copy"><strong>7:30–8:30 PM</strong><small>Available on your calendar</small></span><span class="choice-mark">✓</span></button></div></div>
+          <aside class="card soft"><p class="section-label">Your response</p><div class="mini-stat"><span>Selected</span><strong id="guest-count">No moments yet</strong></div><div class="privacy"><svg viewBox="0 0 24 24" fill="none"><rect x="5" y="10" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M8 10V7a4 4 0 0 1 8 0v3" stroke="currentColor" stroke-width="1.8"/></svg><span>Others see which moments work, never what is on your calendar.</span></div><div class="actions"><button class="button ghost" id="guest-moments-back">Back</button><button class="button primary guest-submit" id="guest-submit" disabled>Send my choices</button></div></aside>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div class="toast" role="status" aria-live="polite"></div>
+  <script>
+    const views=[...document.querySelectorAll('.view')], bars=[...document.querySelectorAll('.progress span')];
+    let step=-2; const show=n=>{step=n;views.forEach(v=>v.classList.toggle('active',+v.dataset.step===n));bars.forEach((b,i)=>b.classList.toggle('done',i<=Math.min(n,3)));const fill=views.find(v=>+v.dataset.step===n)?.querySelector('.journey-fill');if(fill){fill.style.transition='none';fill.style.strokeDashoffset='100';requestAnimationFrame(()=>requestAnimationFrame(()=>{fill.style.transition='stroke-dashoffset .65s ease';fill.style.strokeDashoffset='var(--journey-left)';}));}window.scrollTo({top:0,behavior:'smooth'});};
+    document.querySelector('#sign-in').addEventListener('click',()=>show(-1));
+    document.querySelector('#setup-back').addEventListener('click',()=>show(-2));
+    document.querySelector('#connect-google').addEventListener('click',e=>{e.currentTarget.innerHTML='<span class="google-g">✓</span>Google Calendar connected';e.currentTarget.disabled=true;document.querySelector('#continue-setup').disabled=false;});
+    document.querySelector('#continue-setup').addEventListener('click',()=>show(0));
+    document.querySelectorAll('.calendar-choice').forEach(b=>b.addEventListener('click',()=>b.classList.toggle('active')));
+    document.querySelectorAll('.next').forEach(b=>b.addEventListener('click',()=>show(Math.min(step+1,4))));
+    document.querySelectorAll('.back').forEach(b=>b.addEventListener('click',()=>show(Math.max(step-1,0))));
+    const durationPills=[...document.querySelectorAll('.pill:not(.daypart)')];
+    const syncPlan=()=>{const name=document.querySelector('#plan-name').value||'A plan together';document.querySelectorAll('.plan-eyebrow').forEach(x=>x.textContent=name);document.querySelector('#summary-name').textContent=name;document.querySelector('#summary-duration').textContent=durationPills.find(x=>x.classList.contains('active'))?.textContent||'1 hour';const selected=[...document.querySelectorAll('.daypart.active')].map(x=>x.textContent.toLowerCase());const start=document.querySelector('#date-from').valueAsDate,end=document.querySelector('#date-until').valueAsDate;let dateWindow='Choose dates';if(start&&end){const opts={month:'short',day:'numeric',timeZone:'UTC'},sameMonth=start.getUTCMonth()===end.getUTCMonth();dateWindow=start.toLocaleDateString('en-US',opts)+'–'+end.toLocaleDateString('en-US',sameMonth?{day:'numeric',timeZone:'UTC'}:opts);}document.querySelector('#summary-window').textContent=`${dateWindow} · ${selected.join(', ')}`;};
+    document.querySelectorAll('.idea').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.idea').forEach(x=>x.classList.remove('active'));b.classList.add('active');document.querySelector('#plan-name').value=b.dataset.name;const map={'45':'45 min','60':'1 hour','90':'90 min','120':'2 hours'};const reactions={'A proper catch-up':'A proper catch-up sounds lovely.','Dinner together':'Dinner together? Delicious.','A walk together':'Fresh air and good company.','Coffee and conversation':'Coffee always makes time.','Game night':'Let the friendly rivalry begin.','':'Make this one entirely yours.'};document.querySelector('#reaction').textContent=reactions[b.dataset.name];durationPills.forEach(x=>x.classList.toggle('active',x.textContent===map[b.dataset.duration]));syncPlan();if(!b.dataset.name)document.querySelector('#plan-name').focus();}));
+    durationPills.forEach(b=>b.addEventListener('click',()=>{durationPills.forEach(x=>x.classList.remove('active'));b.classList.add('active');syncPlan();}));
+    const dayparts=[...document.querySelectorAll('.daypart')];
+    dayparts.forEach(b=>b.addEventListener('click',()=>{if(b.textContent==='Any time'){dayparts.forEach(x=>x.classList.toggle('active',x===b));}else{dayparts[0].classList.remove('active');b.classList.toggle('active');if(!dayparts.some((x,i)=>i>0&&x.classList.contains('active')))dayparts[0].classList.add('active');}syncPlan();}));
+    document.querySelector('#plan-name').addEventListener('input',syncPlan);
+    document.querySelectorAll('#date-from, #date-until').forEach(x=>x.addEventListener('change',syncPlan));
+    const dateFrom=document.querySelector('#date-from'),dateUntil=document.querySelector('#date-until'),datePopover=document.querySelector('#date-popover'),calendarDays=document.querySelector('#calendar-days');
+    let pickerTarget='from',pickerMonth=new Date(Date.UTC(2026,9,1));
+    const formatFriendly=value=>new Date(value+'T00:00:00Z').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',timeZone:'UTC'});
+    const updateDateLabels=()=>{document.querySelector('#date-from-display').textContent=formatFriendly(dateFrom.value);document.querySelector('#date-until-display').textContent=formatFriendly(dateUntil.value);};
+    const renderCalendar=()=>{const year=pickerMonth.getUTCFullYear(),month=pickerMonth.getUTCMonth(),first=new Date(Date.UTC(year,month,1)).getUTCDay(),count=new Date(Date.UTC(year,month+1,0)).getUTCDate();document.querySelector('#calendar-month').textContent=pickerMonth.toLocaleDateString('en-US',{month:'long',year:'numeric',timeZone:'UTC'});calendarDays.innerHTML='';for(let i=0;i<first;i++){const blank=document.createElement('span');blank.className='calendar-day blank';calendarDays.append(blank);}for(let day=1;day<=count;day++){const value=`${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`,button=document.createElement('button');button.type='button';button.className='calendar-day';button.textContent=day;button.setAttribute('aria-label',formatFriendly(value));if(value===dateFrom.value||value===dateUntil.value)button.classList.add('selected');else if(value>dateFrom.value&&value<dateUntil.value)button.classList.add('in-range');button.addEventListener('click',()=>{if(pickerTarget==='from'){dateFrom.value=value;if(dateUntil.value<value)dateUntil.value=value;}else{dateUntil.value=value;if(dateFrom.value>value)dateFrom.value=value;}updateDateLabels();syncPlan();datePopover.hidden=true;});calendarDays.append(button);}};
+    document.querySelectorAll('[data-date-target]').forEach(button=>button.addEventListener('click',event=>{event.stopPropagation();pickerTarget=button.dataset.dateTarget;const value=pickerTarget==='from'?dateFrom.value:dateUntil.value,chosen=new Date(value+'T00:00:00Z');pickerMonth=new Date(Date.UTC(chosen.getUTCFullYear(),chosen.getUTCMonth(),1));renderCalendar();datePopover.hidden=false;}));
+    document.querySelector('#month-prev').addEventListener('click',()=>{pickerMonth=new Date(Date.UTC(pickerMonth.getUTCFullYear(),pickerMonth.getUTCMonth()-1,1));renderCalendar();});
+    document.querySelector('#month-next').addEventListener('click',()=>{pickerMonth=new Date(Date.UTC(pickerMonth.getUTCFullYear(),pickerMonth.getUTCMonth()+1,1));renderCalendar();});
+    datePopover.addEventListener('click',event=>event.stopPropagation());
+    document.addEventListener('click',()=>datePopover.hidden=true);
+    document.addEventListener('keydown',event=>{if(event.key==='Escape')datePopover.hidden=true;});
+    document.querySelectorAll('[data-step="2"] .moment').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('[data-step="2"] .moment').forEach(x=>x.classList.remove('active'));b.classList.add('active');}));
+    const toast=t=>{const el=document.querySelector('.toast');el.textContent=t;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),1800)};
+    document.querySelector('#preview-guest').addEventListener('click',()=>{location.hash='guest';show(5);});
+    document.querySelector('#guest-back').addEventListener('click',()=>{history.replaceState(null,'',location.href.split('#')[0]);show(1);});
+    document.querySelector('#guest-continue').addEventListener('click',()=>{location.hash='guest-moments';show(6);});
+    document.querySelector('#guest-moments-back').addEventListener('click',()=>{location.hash='guest';show(5);});
+    const guestChoices=[...document.querySelectorAll('.guest-choice')],guestSubmit=document.querySelector('#guest-submit'),guestCount=document.querySelector('#guest-count');
+    guestChoices.forEach(button=>button.addEventListener('click',()=>{button.classList.toggle('active');const count=guestChoices.filter(x=>x.classList.contains('active')).length;guestCount.textContent=count?count+` moment${count===1?'':'s'}`:'No moments yet';guestSubmit.disabled=!count;}));
+    guestSubmit.addEventListener('click',()=>{guestSubmit.textContent='Choices sent ✓';guestSubmit.disabled=true;toast('Your choices are with Maya');});
+    const addPerson=({name,email,initials})=>{const people=document.querySelector('#plan-people');if(people.querySelector(`[data-email="${email}"]`)){toast('Already in this plan');return false;}const row=document.createElement('div');row.className='person';row.dataset.email=email;row.innerHTML=`<span class="avatar">${initials}</span><div><strong>${name}</strong><small>${email}</small></div><span class="status">Invited</span>`;people.append(row);toast(`Invite sent to ${name}`);return true;};
+    document.querySelectorAll('.recent-person').forEach(button=>button.addEventListener('click',()=>{if(addPerson(button.dataset))button.disabled=true;}));
+    document.querySelector('#invite').addEventListener('click',()=>{const input=document.querySelector('#friend-email'),email=input.value.trim().toLowerCase();if(!email.includes('@')){toast('Enter an email address');input.focus();return;}const raw=email.split('@')[0].replace(/[._-]+/g,' '),name=raw.replace(/\b\w/g,c=>c.toUpperCase()),initials=name.replace(/\s/g,'').slice(0,2).toUpperCase();if(addPerson({name,email,initials}))input.value='';});
+    document.querySelector('#create').addEventListener('click',()=>{syncPlan();show(4)});
+    document.querySelector('#restart').addEventListener('click',()=>show(0));
+    document.querySelector('#theme').addEventListener('click',()=>{document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'':'dark';});
+    if(location.hash==='#guest')show(5);else if(location.hash==='#guest-moments')show(6);
+  </script>
+</body>
+</html>
