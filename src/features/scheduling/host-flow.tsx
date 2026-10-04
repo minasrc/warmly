@@ -2,12 +2,13 @@ import { lazy, Suspense, useId, useState } from "react"
 import { Form } from "react-aria-components"
 import type { CalendarDate } from "@internationalized/date"
 import type { RangeValue } from "@react-types/shared"
-import { ArrowLeft, ArrowRight, Check, Copy, LockKeyhole, Moon, Plus, Sun } from "lucide-react"
+import { ArrowLeft, ArrowRight, Check, Copy, LockKeyhole, Plus } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { FriendPortraits, Journey, PrivacyNote } from "@/components/warmly/brand"
+import { AppHeader } from "@/components/warmly/app-header"
 import {
   activityPlan,
   activities,
@@ -112,15 +113,11 @@ export function HostFrame({ step, dark, onDarkChange, children }: {
 }) {
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col px-4 py-5 sm:px-7 sm:py-7">
-      <header className="mb-5 flex items-center justify-between">
-        <span className="font-heading text-xl font-semibold text-primary">warmly</span>
-        <div className="flex items-center gap-3">
+      <div className="mb-5">
+        <AppHeader dark={dark} onDarkChange={onDarkChange}>
           {step !== "sign-in" && step !== "calendar" ? <Journey progress={stepProgress[step]} /> : null}
-          <Button variant="ghost" size="icon" aria-label={dark ? "Use light theme" : "Use dark theme"} onClick={() => onDarkChange(!dark)}>
-            {dark ? <Sun /> : <Moon />}
-          </Button>
-        </div>
-      </header>
+        </AppHeader>
+      </div>
       <section className="grid flex-1 place-items-center pb-8">{children}</section>
     </main>
   )
@@ -149,7 +146,7 @@ export function Shell({
         {copy ? <p className="mx-auto max-w-md text-sm leading-6 text-muted-foreground">{copy}</p> : null}
       </CardHeader>
       <CardContent className="min-w-0 px-6 pb-7 sm:px-9">{children}</CardContent>
-      {footer ? <CardFooter className="justify-between border-t bg-secondary/35 px-6 py-4 sm:px-9">{footer}</CardFooter> : null}
+      {footer ? <CardFooter className="grid gap-2 border-t bg-secondary/35 px-6 py-4 [&>button:first-child]:justify-self-start min-[380px]:flex min-[380px]:justify-between sm:px-9">{footer}</CardFooter> : null}
     </Card>
   )
 }
@@ -438,10 +435,10 @@ export function MomentPicker({
             type="button"
             aria-pressed={selected === moment.id}
             onClick={() => onSelectedChange(moment.id)}
-            className={`flex items-center justify-between rounded-2xl border p-4 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-ring ${selected === moment.id ? "border-primary bg-primary/8" : "hover:bg-secondary/50"}`}
+            className={`flex min-w-0 items-center justify-between gap-3 rounded-2xl border p-4 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-ring ${selected === moment.id ? "border-primary bg-primary/8" : "hover:bg-secondary/50"}`}
           >
-            <span><strong className="block font-heading text-lg">{moment.day}</strong><span className="text-sm text-muted-foreground">{moment.note}</span></span>
-            <span className="flex items-center gap-3 font-semibold text-primary">{moment.time}{selected === moment.id ? <Check className="size-4" /> : null}</span>
+            <span className="min-w-0"><strong className="block font-heading text-lg">{moment.day}</strong><span className="text-sm text-muted-foreground">{moment.note}</span></span>
+            <span className="flex shrink-0 items-center gap-2 font-semibold whitespace-nowrap text-primary">{moment.time}{selected === moment.id ? <Check className="size-4" /> : null}</span>
           </button>
         ))}
         <PrivacyNote>Availability is rechecked before the invitation is created.</PrivacyNote>
