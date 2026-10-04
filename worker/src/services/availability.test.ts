@@ -27,8 +27,8 @@ describe("findAggregateCandidates", () => {
       durationMinutes: 60,
       quorum: 2,
     }, [
-      { participantId: "host", accessToken: "host-token", calendarIds: ["free"] },
-      { participantId: "guest", accessToken: "guest-token", calendarIds: ["busy"] },
+      { participantId: "host", connections: [{ accessToken: "host-token", calendarIds: ["free"] }] },
+      { participantId: "guest", connections: [{ accessToken: "guest-token", calendarIds: ["busy"] }] },
     ])
 
     expect(result.map((slot) => slot.start)).toEqual(["2026-10-12T13:00:00Z"])
@@ -56,11 +56,31 @@ describe("findAggregateCandidates", () => {
       },
       durationMinutes: 60,
       quorum: 1,
-    }, [{ participantId: "host", accessToken: "token", calendarIds: ["primary"] }])
+    }, [{ participantId: "host", connections: [{ accessToken: "token", calendarIds: ["primary"] }] }])
 
     expect(observedRange).toEqual({
       timeMin: "2026-03-08T13:00:00Z",
       timeMax: "2026-03-08T16:00:00Z",
     })
+  })
+
+  it("treats a participant without a calendar connection as unavailable", async () => {
+    const result = await findAggregateCandidates(provider, {
+      window: {
+        startDate: "2026-10-12",
+        endDate: "2026-10-12",
+        timeZone: "America/New_York",
+        dayStart: "09:00",
+        dayEnd: "10:00",
+        incrementMinutes: 30,
+      },
+      durationMinutes: 60,
+      quorum: 2,
+    }, [
+      { participantId: "host", connections: [{ accessToken: "token", calendarIds: ["free"] }] },
+      { participantId: "guest", connections: [] },
+    ])
+
+    expect(result).toEqual([])
   })
 })
