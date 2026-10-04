@@ -47,4 +47,4 @@ npm --workspace @warmly/worker run build
 npm audit --omit=dev
 ```
 
-The frontend still runs on fixture state. The schema, Worker boundary, Google Calendar provider, aggregate availability service, and typed frontend adapters are present, but production authentication, OAuth callbacks, Vault integration, invitation delivery, and booking routes require external service configuration.
+The frontend still runs on fixture state until real service configuration is available. The Worker now implements authenticated plans, secure invitations, Google OAuth with PKCE, Vault-backed refresh tokens, calendar selection, aggregate FreeBusy candidates, guest response persistence, final availability rechecks, and idempotent event creation. These boundaries are locally tested; connecting the visible flow requires Supabase, Google OAuth, and Cloudflare configuration.

@@ -40,7 +40,7 @@ Requires: Supabase project URL and publishable key, production application URLs,
 2. Implement state and PKCE validation, callback handling, and server-side token exchange.
 3. Store encrypted refresh tokens in Supabase Vault.
 4. List calendars and let each user select multiple calendars.
-5. Request read-only calendar scopes first.
+5. Request only CalendarList and FreeBusy scopes first, then request event-write access at booking time.
 6. Add reconnect, disconnect, token rotation, and revoked-grant handling.
 
 Requires: Google Cloud project, OAuth consent-screen configuration, client ID and secret, and approved callback URLs.
