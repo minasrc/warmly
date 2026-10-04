@@ -41,4 +41,22 @@ describe("GoogleOAuthClient", () => {
     expect(body.get("code")).toBe("private-code")
     expect(body.get("code_verifier")).toBe("private-verifier")
   })
+
+  it("revokes a refresh token in a form body", async () => {
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(null))
+    const client = new GoogleOAuthClient(config, fetcher as typeof fetch)
+    await client.revoke("refresh-token")
+
+    const [input, init] = fetcher.mock.calls[0] ?? []
+    expect(input).toBe("https://oauth2.googleapis.com/revoke")
+    expect(init?.method).toBe("POST")
+    const body = init?.body
+    expect(body).toBeInstanceOf(URLSearchParams)
+    expect((body as URLSearchParams).get("token")).toBe("refresh-token")
+  })
+
+  it("treats an already-invalid token as successfully revoked", async () => {
+    const fetcher = vi.fn(async () => new Response(null, { status: 400 }))
+    await expect(new GoogleOAuthClient(config, fetcher as typeof fetch).revoke("expired")).resolves.toBeUndefined()
+  })
 })

@@ -95,4 +95,15 @@ export class GoogleOAuthClient {
     if (!response.ok) throw new HttpError(502, "provider_error", "Google session could not be refreshed")
     return tokenSchema.omit({ refresh_token: true }).parse(await response.json())
   }
+
+  async revoke(refreshToken: string) {
+    const response = await this.fetcher("https://oauth2.googleapis.com/revoke", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ token: refreshToken }),
+    })
+    if (!response.ok && response.status !== 400) {
+      throw new HttpError(502, "provider_error", "Google calendar access could not be revoked")
+    }
+  }
 }

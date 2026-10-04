@@ -6,6 +6,8 @@ import { parseEnvironment } from "./env"
 import { HttpError } from "./http-error"
 import { requireUser } from "./middleware/auth"
 import { requestContext } from "./middleware/request-context"
+import { globalRateLimit } from "./middleware/rate-limit"
+import { securityHeaders } from "./middleware/security"
 import { invitationAccess, invitationManagement } from "./routes/invitations"
 import { plans } from "./routes/plans"
 import { googleOAuth } from "./routes/google-oauth"
@@ -17,6 +19,7 @@ import { responses } from "./routes/responses"
 const app = new Hono<AppEnvironment>()
 
 app.use("*", requestContext)
+app.use("*", securityHeaders)
 app.use("*", async (context, next) => {
   const environment = parseEnvironment(context.env)
   return cors({
@@ -27,6 +30,7 @@ app.use("*", async (context, next) => {
     maxAge: 86400,
   })(context, next)
 })
+app.use("/v1/*", globalRateLimit)
 
 app.get("/health", (context) => context.json({
   status: "ok",

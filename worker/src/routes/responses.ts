@@ -6,6 +6,7 @@ import { requireUser } from "../middleware/auth"
 import { loadPlanCandidates } from "../services/plan-candidates"
 import { createAdminClient, createUserClient } from "../supabase"
 import { parseId, parseJson } from "../validation"
+import { writeAuditEvent } from "../audit"
 
 const responseSchema = z.object({
   timeZone: z.string().min(1).max(100).refine((value) => {
@@ -45,6 +46,13 @@ responses.put("/:planId/response", async (context) => {
     response_ends_at: input.slots.map((slot) => slot.endsAt),
   })
   if (error) throw new HttpError(422, "bad_request", "Availability choices could not be saved")
+  await writeAuditEvent(context.env, {
+    action: "response.updated",
+    actorId: context.get("user").id,
+    requestId: context.get("requestId"),
+    planId,
+    metadata: { selectedCount: input.slots.length },
+  })
   return context.json({ responseId, selectedCount: input.slots.length })
 })
 
@@ -58,7 +66,18 @@ responses.get("/:planId/response-summary", async (context) => {
   }
 
   const admin = createAdminClient(context.env)
-  const { data: planResponses } = await admin.from("guest_responses").select("id").eq("plan_id", planId)
+  const { data: activeMembers } = await admin
+    .from("plan_members")
+    .select("user_id")
+    .eq("plan_id", planId)
+    .neq("status", "removed")
+  const activeUserIds = (activeMembers ?? []).map((member) => member.user_id)
+  if (!activeUserIds.length) return context.json({ moments: [] })
+  const { data: planResponses } = await admin
+    .from("guest_responses")
+    .select("id")
+    .eq("plan_id", planId)
+    .in("user_id", activeUserIds)
   const responseIds = (planResponses ?? []).map((response) => response.id)
   if (!responseIds.length) return context.json({ moments: [] })
   const { data: slots, error } = await admin

@@ -64,6 +64,14 @@ export class ApiClient {
     )
   }
 
+  async cancelInvitation(planId: string, invitationId: string) {
+    await this.request<void>(`/v1/plans/${planId}/invitations/${invitationId}`, { method: "DELETE" })
+  }
+
+  async removeParticipant(planId: string, memberId: string) {
+    await this.request<void>(`/v1/plans/${planId}/members/${memberId}`, { method: "DELETE" })
+  }
+
   async openPlan(planId: string) {
     return this.request<{ plan: { id: string; status: string } }>(`/v1/plans/${planId}/status`, {
       method: "PATCH",
@@ -101,6 +109,10 @@ export class ApiClient {
       `/v1/calendar/connections/${connectionId}/calendars`,
       { method: "PUT", body: JSON.stringify({ calendarIds }) },
     )
+  }
+
+  async disconnectCalendar(connectionId: string) {
+    await this.request<void>(`/v1/calendar/connections/${connectionId}`, { method: "DELETE" })
   }
 
   async getCandidateMoments(planId: string) {
@@ -150,6 +162,7 @@ export class ApiClient {
       const payload = await readApiError(response, fallbackRequestId)
       throw new ApiClientError(response.status, payload.error.code, payload.error.requestId, payload.error.message)
     }
+    if (response.status === 204) return undefined as T
     return response.json() as Promise<T>
   }
 }

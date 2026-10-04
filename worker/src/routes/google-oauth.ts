@@ -6,6 +6,7 @@ import { HttpError } from "../http-error"
 import { requireUser } from "../middleware/auth"
 import { createAdminClient } from "../supabase"
 import { GoogleOAuthClient } from "../calendar/google-oauth"
+import { writeAuditEvent } from "../audit"
 
 export const googleOAuth = new Hono<AppEnvironment>()
 
@@ -70,6 +71,12 @@ googleOAuth.get("/callback", async (context) => {
     google_granted_scopes: tokens.scope.split(" ").filter(Boolean),
   })
   if (saveError) throw new HttpError(500, "internal_error", "Calendar connection could not be saved")
+  await writeAuditEvent(context.env, {
+    action: "calendar.connected",
+    actorId: consumed.oauth_user_id,
+    requestId: context.get("requestId"),
+    metadata: { provider: "google" },
+  })
 
   const redirect = new URL("/calendar-connected", environment.FRONTEND_URL)
   redirect.searchParams.set("status", "success")

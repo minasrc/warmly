@@ -83,4 +83,33 @@ describe("findAggregateCandidates", () => {
 
     expect(result).toEqual([])
   })
+
+  it("keeps other participants usable when one provider query fails", async () => {
+    const partialProvider: CalendarProvider = {
+      ...provider,
+      queryFreeBusy: async ({ accessToken, calendarIds }) => {
+        if (accessToken === "failed-token") throw new Error("provider unavailable")
+        return Object.fromEntries(calendarIds.map((id) => [id, []]))
+      },
+    }
+    const result = await findAggregateCandidates(partialProvider, {
+      window: {
+        startDate: "2026-10-12",
+        endDate: "2026-10-12",
+        timeZone: "America/New_York",
+        dayStart: "09:00",
+        dayEnd: "10:00",
+        incrementMinutes: 30,
+      },
+      durationMinutes: 60,
+      quorum: 1,
+    }, [
+      { participantId: "host", connections: [{ accessToken: "working-token", calendarIds: ["primary"] }] },
+      { participantId: "guest", connections: [{ accessToken: "failed-token", calendarIds: ["primary"] }] },
+    ])
+
+    expect(result).toHaveLength(1)
+    expect(result[0]?.availableParticipantIds).toEqual(["host"])
+    expect(result[0]?.unavailableCount).toBe(1)
+  })
 })

@@ -34,4 +34,15 @@ describe("ApiClient", () => {
       new ApiClientError(401, "unauthorized", "request-1", "Authentication is required"),
     )
   })
+
+  it("supports empty successful responses when disconnecting a calendar", async () => {
+    const fetcher = vi.fn(async (_input: URL | RequestInfo, _init?: RequestInit) =>
+      new Response(null, { status: 204 }))
+    const client = new ApiClient("https://api.example.com", {
+      getAccessToken: async () => "private-token",
+    }, fetcher as typeof fetch)
+    await expect(client.disconnectCalendar("connection-1")).resolves.toBeUndefined()
+    const [, init] = fetcher.mock.calls[0] ?? []
+    expect(init?.method).toBe("DELETE")
+  })
 })

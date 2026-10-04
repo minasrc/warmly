@@ -6,6 +6,7 @@ import { HttpError } from "../http-error"
 import { requireUser } from "../middleware/auth"
 import { createAdminClient, createUserClient } from "../supabase"
 import { parseId, parseJson } from "../validation"
+import { writeAuditEvent } from "../audit"
 
 const invitationSchema = z.object({
   email: z.email().transform((email) => email.trim().toLowerCase()),
@@ -31,8 +32,68 @@ invitationManagement.post("/:planId/invitations", async (context) => {
   if (error?.code === "23505") throw new HttpError(409, "conflict", "This person already has a pending invitation")
   if (error) throw new HttpError(403, "forbidden", "Only the host can invite people")
 
+  await writeAuditEvent(context.env, {
+    action: "invitation.created",
+    actorId: context.get("user").id,
+    requestId: context.get("requestId"),
+    planId,
+    metadata: { invitationId: data.id },
+  })
   const inviteUrl = new URL(`/invite/${token}`, context.env.FRONTEND_URL).toString()
   return context.json({ invitation: data, inviteUrl }, 201)
+})
+
+invitationManagement.delete("/:planId/invitations/:invitationId", async (context) => {
+  const planId = parseId(context.req.param("planId"))
+  const invitationId = parseId(context.req.param("invitationId"))
+  const client = createUserClient(context.env, context.get("accessToken"))
+  const { data, error } = await client
+    .from("invitations")
+    .update({ status: "revoked", revoked_at: new Date().toISOString() })
+    .eq("id", invitationId)
+    .eq("plan_id", planId)
+    .eq("status", "pending")
+    .select("id")
+    .maybeSingle()
+  if (error) throw new HttpError(403, "forbidden", "Only the host can cancel invitations")
+  if (!data) throw new HttpError(404, "not_found", "Pending invitation not found")
+  await writeAuditEvent(context.env, {
+    action: "invitation.revoked",
+    actorId: context.get("user").id,
+    requestId: context.get("requestId"),
+    planId,
+    metadata: { invitationId },
+  })
+  return context.body(null, 204)
+})
+
+invitationManagement.delete("/:planId/members/:memberId", async (context) => {
+  const planId = parseId(context.req.param("planId"))
+  const memberId = parseId(context.req.param("memberId"))
+  const client = createUserClient(context.env, context.get("accessToken"))
+  const { data: plan } = await client.from("plans").select("host_id").eq("id", planId).maybeSingle()
+  if (!plan || plan.host_id !== context.get("user").id) {
+    throw new HttpError(403, "forbidden", "Only the host can remove participants")
+  }
+  if (memberId === plan.host_id) throw new HttpError(409, "conflict", "The host cannot be removed")
+  const { data, error } = await client
+    .from("plan_members")
+    .update({ status: "removed" })
+    .eq("plan_id", planId)
+    .eq("user_id", memberId)
+    .neq("status", "removed")
+    .select("user_id")
+    .maybeSingle()
+  if (error) throw new HttpError(500, "internal_error", "Participant could not be removed")
+  if (!data) throw new HttpError(404, "not_found", "Participant not found")
+  await writeAuditEvent(context.env, {
+    action: "participant.removed",
+    actorId: context.get("user").id,
+    requestId: context.get("requestId"),
+    planId,
+    metadata: { memberId },
+  })
+  return context.body(null, 204)
 })
 
 export const invitationAccess = new Hono<AppEnvironment>()
@@ -69,5 +130,11 @@ invitationAccess.post("/:token/accept", requireUser, async (context) => {
   if (result.outcome !== "accepted" || !result.accepted_plan_id) {
     throw new HttpError(409, "conflict", "Invitation is invalid or expired")
   }
+  await writeAuditEvent(context.env, {
+    action: "invitation.accepted",
+    actorId: context.get("user").id,
+    requestId: context.get("requestId"),
+    planId: result.accepted_plan_id,
+  })
   return context.json({ planId: result.accepted_plan_id })
 })

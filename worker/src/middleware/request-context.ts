@@ -2,7 +2,10 @@ import { createMiddleware } from "hono/factory"
 import type { AppEnvironment } from "../context"
 
 export const requestContext = createMiddleware<AppEnvironment>(async (context, next) => {
-  const requestId = context.req.header("x-request-id") || crypto.randomUUID()
+  const suppliedRequestId = context.req.header("x-request-id")
+  const requestId = suppliedRequestId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(suppliedRequestId)
+    ? suppliedRequestId
+    : crypto.randomUUID()
   const startedAt = Date.now()
   context.set("requestId", requestId)
   context.header("x-request-id", requestId)

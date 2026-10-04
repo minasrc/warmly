@@ -8,6 +8,7 @@ import { HttpError } from "../http-error"
 import { requireUser } from "../middleware/auth"
 import { createAdminClient, createUserClient } from "../supabase"
 import { parseId, parseJson } from "../validation"
+import { writeAuditEvent } from "../audit"
 
 const selectionSchema = z.object({
   calendarIds: z.array(z.string().min(1)).min(1).max(50),
@@ -54,7 +55,45 @@ calendars.put("/connections/:connectionId/calendars", async (context) => {
     calendar_primary_flags: verified.map((calendar) => calendar.primary),
   })
   if (error) throw new HttpError(422, "bad_request", "Calendar selection could not be saved")
+  await writeAuditEvent(context.env, {
+    action: "calendar.selection_updated",
+    actorId: context.get("user").id,
+    requestId: context.get("requestId"),
+    metadata: { connectionId, selectedCount: verified.length },
+  })
   return context.json({ calendars: verified })
+})
+
+calendars.delete("/connections/:connectionId", async (context) => {
+  const connectionId = parseId(context.req.param("connectionId"))
+  const userId = context.get("user").id
+  const admin = createAdminClient(context.env)
+  const { data: refreshToken, error: tokenError } = await admin.rpc("get_calendar_refresh_token", {
+    requested_connection_id: connectionId,
+    requested_user_id: userId,
+  })
+  if (tokenError || typeof refreshToken !== "string") {
+    throw new HttpError(404, "not_found", "Calendar connection not found")
+  }
+  const environment = parseEnvironment(context.env)
+  const oauth = new GoogleOAuthClient({
+    clientId: environment.GOOGLE_CLIENT_ID,
+    clientSecret: environment.GOOGLE_CLIENT_SECRET,
+    redirectUri: environment.GOOGLE_REDIRECT_URI,
+  })
+  await oauth.revoke(refreshToken)
+  const { data: revoked, error } = await admin.rpc("revoke_google_calendar_connection", {
+    requested_connection_id: connectionId,
+    requested_user_id: userId,
+  })
+  if (error || !revoked) throw new HttpError(404, "not_found", "Calendar connection not found")
+  await writeAuditEvent(context.env, {
+    action: "calendar.revoked",
+    actorId: userId,
+    requestId: context.get("requestId"),
+    metadata: { connectionId, provider: "google" },
+  })
+  return context.body(null, 204)
 })
 
 async function accessTokenForConnection(context: Context<AppEnvironment>, connectionId: string) {

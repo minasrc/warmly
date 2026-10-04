@@ -9,6 +9,8 @@ import { requireUser } from "../middleware/auth"
 import { loadPlanCandidates } from "../services/plan-candidates"
 import { createAdminClient } from "../supabase"
 import { parseId, parseJson } from "../validation"
+import { writeAuditEvent } from "../audit"
+import { chooseBookingCalendar, requireCurrentCandidate, validateBookingRetry } from "../services/booking"
 
 const bookingSchema = z.object({
   startsAt: z.iso.datetime({ offset: true }),
@@ -28,11 +30,7 @@ bookings.post("/:planId/bookings", async (context) => {
   const { plan, candidates } = await loadPlanCandidates(context.env, context.get("accessToken"), planId)
   if (plan.host_id !== user.id) throw new HttpError(403, "forbidden", "Only the host can book a plan")
   if (plan.status !== "collecting") throw new HttpError(409, "conflict", "This plan is not collecting responses")
-  const candidate = candidates.find((slot) =>
-    Date.parse(slot.start) === Date.parse(input.startsAt)
-    && Date.parse(slot.end) === Date.parse(input.endsAt),
-  )
-  if (!candidate) throw new HttpError(409, "conflict", "That moment is no longer available")
+  requireCurrentCandidate(candidates, input)
 
   const admin = createAdminClient(context.env)
   const { data: connection } = await admin
@@ -47,7 +45,7 @@ bookings.post("/:planId/bookings", async (context) => {
     provider_calendar_id: string
     is_primary: boolean
   }> | undefined
-  const calendar = selectedCalendars?.find((item) => item.is_primary) ?? selectedCalendars?.[0]
+  const calendar = chooseBookingCalendar(selectedCalendars)
   if (!connection || !calendar) {
     throw new HttpError(409, "conflict", "Event creation permission is required")
   }
@@ -57,15 +55,7 @@ bookings.post("/:planId/bookings", async (context) => {
     .select()
     .eq("idempotency_key", input.idempotencyKey)
     .maybeSingle()
-  if (existing && existing.plan_id !== planId) {
-    throw new HttpError(409, "conflict", "Idempotency key is already in use")
-  }
-  if (existing && (
-    Date.parse(existing.starts_at) !== Date.parse(input.startsAt)
-    || Date.parse(existing.ends_at) !== Date.parse(input.endsAt)
-  )) {
-    throw new HttpError(409, "conflict", "Booking retry does not match the original moment")
-  }
+  if (existing) validateBookingRetry(existing, planId, input)
   if (existing?.status === "created") return context.json({ booking: existing })
   if (!existing) {
     const { error: insertError } = await admin.from("bookings").insert({
@@ -116,5 +106,12 @@ bookings.post("/:planId/bookings", async (context) => {
     .single()
   if (updateError) throw new HttpError(500, "internal_error", "Event was created but booking state needs reconciliation")
   await admin.from("plans").update({ status: "booked" }).eq("id", planId)
+  await writeAuditEvent(context.env, {
+    action: "booking.created",
+    actorId: user.id,
+    requestId: context.get("requestId"),
+    planId,
+    metadata: { bookingId: booking.id },
+  })
   return context.json({ booking }, 201)
 })

@@ -11,6 +11,8 @@ React web app
 
 The browser owns presentation and user input. It never receives provider refresh tokens, raw provider payloads, or another participant's busy intervals. The Worker owns authorization, OAuth, calendar orchestration, candidate calculation, and event creation. Postgres owns durable product state; Vault owns refresh tokens.
 
+Implementation status: credential-free backend work through booking is implemented, including invitation and participant revocation, calendar grant revocation, audit events, request limits, and security headers. Live identity, provider verification, email delivery, deployments, and the final frontend connection still depend on external configuration.
+
 ## Phase 1: foundations
 
 Work that does not require external credentials:

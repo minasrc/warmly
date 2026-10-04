@@ -49,11 +49,8 @@ export async function loadPlanCandidates(
     clientSecret: environment.GOOGLE_CLIENT_SECRET,
     redirectUri: environment.GOOGLE_REDIRECT_URI,
   })
-  const participants: ConnectedParticipant[] = await Promise.all(members.map(async (member) => ({
-    participantId: member.user_id,
-    preferredDayparts: preferencesByUser.get(member.user_id) ?? [],
-    connections: await Promise.all(
-      (connections as Array<{
+  const participants: ConnectedParticipant[] = await Promise.all(members.map(async (member) => {
+    const memberConnections = (connections as Array<{
         id: string
         user_id: string
         status: string
@@ -62,21 +59,33 @@ export async function loadPlanCandidates(
         connection.user_id === member.user_id
         && connection.status === "active"
         && connection.selected_calendars.length,
-      ).map(async (connection) => {
+      )
+    const resolved = await Promise.all(memberConnections.map(async (connection) => {
+      try {
         const { data: refreshToken } = await admin.rpc("get_calendar_refresh_token", {
           requested_connection_id: connection.id,
           requested_user_id: member.user_id,
         })
         if (typeof refreshToken !== "string") {
-          throw new HttpError(409, "conflict", "A calendar connection needs to be reconnected")
+          throw new Error("refresh token unavailable")
         }
         return {
           accessToken: (await oauth.refresh(refreshToken)).access_token,
           calendarIds: connection.selected_calendars.map((calendar) => calendar.provider_calendar_id),
         }
-      }),
-    ),
-  })))
+      } catch {
+        await admin.from("calendar_connections").update({ status: "needs_reauth" }).eq("id", connection.id)
+        return null
+      }
+    }))
+    return {
+      participantId: member.user_id,
+      preferredDayparts: preferencesByUser.get(member.user_id) ?? [],
+      connections: resolved.some((connection) => connection === null)
+        ? []
+        : resolved.filter((connection) => connection !== null),
+    }
+  }))
 
   const candidates = await findAggregateCandidates(new GoogleCalendarProvider(), {
     window: {

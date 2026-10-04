@@ -48,3 +48,5 @@ npm audit --omit=dev
 ```
 
 The frontend still runs on fixture state until real service configuration is available. The Worker now implements authenticated plans, secure invitations, Google OAuth with PKCE, Vault-backed refresh tokens, calendar selection, aggregate FreeBusy candidates, guest response persistence, final availability rechecks, and idempotent event creation. These boundaries are locally tested; connecting the visible flow requires Supabase, Google OAuth, and Cloudflare configuration.
+
+Additional production hardening includes distributed database-backed request limits, strict API security and no-store headers, privacy-safe audit events, Google token revocation with local Vault cleanup, and a tested frontend controller that keeps account sign-in separate from calendar authorization.

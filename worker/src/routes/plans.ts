@@ -6,6 +6,7 @@ import { HttpError } from "../http-error"
 import { PlanRepository } from "../repositories/plans"
 import { createUserClient } from "../supabase"
 import { parseId, parseJson } from "../validation"
+import { writeAuditEvent } from "../audit"
 
 const createPlanSchema = z.object({
   name: z.string().trim().min(1).max(120),
@@ -50,6 +51,12 @@ plans.post("/", async (context) => {
     quorum: input.quorum,
     increment_minutes: input.incrementMinutes,
   })
+  await writeAuditEvent(context.env, {
+    action: "plan.created",
+    actorId: user.id,
+    requestId: context.get("requestId"),
+    planId: plan.id,
+  })
   return context.json({ plan }, 201)
 })
 
@@ -76,5 +83,11 @@ plans.patch("/:planId/status", async (context) => {
     .select()
     .single()
   if (error) throw new HttpError(403, "forbidden", "Only the host can change plan status")
+  await writeAuditEvent(context.env, {
+    action: `plan.${status}`,
+    actorId: context.get("user").id,
+    requestId: context.get("requestId"),
+    planId,
+  })
   return context.json({ plan })
 })

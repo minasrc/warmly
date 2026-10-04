@@ -46,6 +46,8 @@ export type ApiErrorCode =
   | "not_found"
   | "conflict"
   | "provider_error"
+  | "rate_limited"
+  | "temporarily_unavailable"
   | "internal_error"
 
 export type ApiError = {
