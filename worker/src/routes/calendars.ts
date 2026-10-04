@@ -11,7 +11,7 @@ import { parseId, parseJson } from "../validation"
 import { writeAuditEvent } from "../audit"
 
 const selectionSchema = z.object({
-  calendarIds: z.array(z.string().min(1)).min(1).max(50),
+  calendarIds: z.array(z.string().min(1)).max(50),
 })
 
 export const calendars = new Hono<AppEnvironment>()

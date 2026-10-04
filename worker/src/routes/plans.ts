@@ -118,19 +118,18 @@ plans.patch("/:planId/status", async (context) => {
   const planId = parseId(context.req.param("planId"))
   const { status } = await parseJson(context.req.raw, planStatusSchema)
   const client = createUserClient(context.env, context.get("accessToken"))
-  const { data: current } = await client.from("plans").select("status").eq("id", planId).maybeSingle()
+  const { data: current } = await client.from("plans").select("status,host_id").eq("id", planId).maybeSingle()
   if (!current) throw new HttpError(404, "not_found", "Plan not found")
+  if (current.host_id !== context.get("user").id) throw new HttpError(403, "forbidden", "Only the host can change plan status")
   const transitionAllowed = current.status === "draft"
     ? status === "collecting" || status === "cancelled"
     : current.status === "collecting" && status === "cancelled"
   if (!transitionAllowed) throw new HttpError(409, "conflict", "Plan status cannot be changed")
-  const { data: plan, error } = await client
-    .from("plans")
-    .update({ status })
-    .eq("id", planId)
-    .select()
-    .single()
-  if (error) throw new HttpError(403, "forbidden", "Only the host can change plan status")
+  const { data: plan, error } = await createAdminClient(context.env).rpc("transition_plan_status", {
+    requested_plan_id: planId, requested_user_id: context.get("user").id, requested_status: status,
+  })
+  if (error?.code === "P0001") throw new HttpError(409, "conflict", "Plan status cannot be changed while booking is in progress or complete")
+  if (error) throw new HttpError(503, "temporarily_unavailable", "Plan status could not be saved")
   await writeAuditEvent(context.env, {
     action: `plan.${status}`,
     actorId: context.get("user").id,

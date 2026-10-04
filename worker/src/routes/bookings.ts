@@ -11,7 +11,7 @@ import { createAdminClient, createUserClient } from "../supabase"
 import { PlanRepository } from "../repositories/plans"
 import { parseId, parseJson } from "../validation"
 import { writeAuditEvent } from "../audit"
-import { chooseBookingCalendar, requireCurrentCandidate, validateBookingRetry } from "../services/booking"
+import { chooseBookingCalendar, requireCurrentCandidate, validateBookingRetry, type SelectedCalendar } from "../services/booking"
 
 const bookingSchema = z.object({
   startsAt: z.iso.datetime({ offset: true }),
@@ -58,39 +58,45 @@ bookings.post("/:planId/bookings", async (context) => {
     .eq("status", "active")
     .contains("granted_scopes", [EVENTS_SCOPE])
   if (existing) connectionQuery = connectionQuery.eq("id", existing.connection_id)
-  const { data: connection } = await connectionQuery.limit(1).maybeSingle()
-  const selectedCalendars = connection?.selected_calendars as Array<{
-    provider_calendar_id: string
-    is_primary: boolean
-  }> | undefined
-  if (!connection) {
+  const { data: connectionRows, error: connectionsError } = await connectionQuery
+  const connections = connectionRows as Array<{ id: string; selected_calendars: SelectedCalendar[] }> | null
+  if (connectionsError) throw new HttpError(503, "temporarily_unavailable", "Calendar connections could not be loaded")
+  if (!connections?.length) {
     throw new HttpError(409, "conflict", "Event creation permission is required")
   }
 
-  const [{ data: refreshToken }, { data: memberRows, error: membersError }] = await Promise.all([
-    admin.rpc("get_calendar_refresh_token", {
-      requested_connection_id: connection.id,
-      requested_user_id: user.id,
-    }),
-    admin.from("plan_members").select("profiles(email)").eq("plan_id", planId).neq("status", "removed"),
-  ])
+  const { data: memberRows, error: membersError } = await admin.from("plan_members").select("profiles(email)").eq("plan_id", planId).neq("status", "removed")
   if (membersError) throw new HttpError(503, "temporarily_unavailable", "Participants could not be verified")
-  if (typeof refreshToken !== "string") throw new HttpError(409, "conflict", "Calendar connection needs to be reconnected")
   const environment = parseEnvironment(context.env)
   const oauth = new GoogleOAuthClient({
     clientId: environment.GOOGLE_CLIENT_ID,
     clientSecret: environment.GOOGLE_CLIENT_SECRET,
     redirectUri: environment.GOOGLE_REDIRECT_URI,
   })
-  const accessToken = (await oauth.refresh(refreshToken)).access_token
   const provider = new GoogleCalendarProvider()
-  const writableCalendars = (await provider.listCalendars(accessToken)).filter((calendar) => calendar.writable)
-  const calendarId = existing?.provider_calendar_id ?? chooseBookingCalendar(selectedCalendars?.filter((calendar) =>
-    writableCalendars.some((providerCalendar) => providerCalendar.id === calendar.provider_calendar_id),
-  ))?.provider_calendar_id
-  if (!calendarId || !writableCalendars.some((calendar) => calendar.id === calendarId)) {
-    throw new HttpError(409, "conflict", "Select a writable calendar for this event")
+  let destination: { connectionId: string; accessToken: string; calendarId: string } | undefined
+  let connectionFailure: unknown
+  for (const connection of connections) {
+    if (!existing && !connection.selected_calendars.length) continue
+    try {
+      const { data: refreshToken, error } = await admin.rpc("get_calendar_refresh_token", {
+        requested_connection_id: connection.id, requested_user_id: user.id,
+      })
+      if (error || typeof refreshToken !== "string") throw new HttpError(409, "conflict", "Calendar connection needs to be reconnected")
+      const accessToken = (await oauth.refresh(refreshToken)).access_token
+      const writableCalendars = (await provider.listCalendars(accessToken)).filter((calendar) => calendar.writable)
+      const calendarId = existing?.provider_calendar_id ?? chooseBookingCalendar(connection.selected_calendars.filter((calendar) =>
+        writableCalendars.some((providerCalendar) => providerCalendar.id === calendar.provider_calendar_id),
+      ))?.provider_calendar_id
+      if (!calendarId || !writableCalendars.some((calendar) => calendar.id === calendarId)) continue
+      destination = { connectionId: connection.id, accessToken, calendarId }
+      break
+    } catch (failure) {
+      connectionFailure = failure
+    }
   }
+  if (!destination) throw connectionFailure ?? new HttpError(409, "conflict", "Select a writable calendar for this event")
+  const { connectionId, accessToken, calendarId } = destination
   const finish = async (eventId: string) => {
     const { data: booking, error } = await admin.rpc("finalize_calendar_booking", {
       requested_idempotency_key: input.idempotencyKey,
@@ -109,15 +115,15 @@ bookings.post("/:planId/bookings", async (context) => {
   }
   const { candidates } = await loadPlanCandidates(context.env, context.get("accessToken"), planId)
   requireCurrentCandidate(candidates, input)
-  if (!existing) {
-    const { error: insertError } = await admin.from("bookings").insert({
-      plan_id: planId, created_by: user.id, idempotency_key: input.idempotencyKey,
-      starts_at: input.startsAt, ends_at: input.endsAt,
-      connection_id: connection.id, provider_calendar_id: calendarId,
-    })
-    if (insertError?.code === "23505") throw new HttpError(409, "conflict", "This plan is already being booked")
-    if (insertError) throw new HttpError(500, "internal_error", "Booking could not be started")
+  const { error: reservationError } = await admin.rpc("reserve_calendar_booking", {
+    requested_plan_id: planId, requested_user_id: user.id, requested_idempotency_key: input.idempotencyKey,
+    requested_starts_at: input.startsAt, requested_ends_at: input.endsAt,
+    requested_connection_id: connectionId, requested_calendar_id: calendarId,
+  })
+  if (reservationError?.code === "23505" || reservationError?.code === "P0001") {
+    throw new HttpError(409, "conflict", "This plan is closed or already being booked")
   }
+  if (reservationError) throw new HttpError(503, "temporarily_unavailable", "Booking could not be started")
   const attendeeEmails = (memberRows ?? []).flatMap((row) => {
     const profile = row.profiles as unknown as { email: string } | null
     return profile?.email && profile.email !== user.email ? [profile.email] : []

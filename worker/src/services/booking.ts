@@ -12,7 +12,7 @@ type ExistingBooking = {
   ends_at: string
 }
 
-type SelectedCalendar = {
+export type SelectedCalendar = {
   provider_calendar_id: string
   is_primary: boolean
 }

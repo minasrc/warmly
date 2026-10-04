@@ -53,9 +53,9 @@ responses.put("/:planId/response", async (context) => {
   )) {
     throw new HttpError(409, "conflict", "One or more moments are no longer available")
   }
-  const client = createUserClient(context.env, context.get("accessToken"))
-  const { data: responseId, error } = await client.rpc("save_guest_response", {
+  const { data: responseId, error } = await createAdminClient(context.env).rpc("save_guest_response", {
     response_plan_id: planId,
+    response_user_id: context.get("user").id,
     response_time_zone: input.timeZone,
     response_starts_at: input.slots.map((slot) => slot.startsAt),
     response_ends_at: input.slots.map((slot) => slot.endsAt),
