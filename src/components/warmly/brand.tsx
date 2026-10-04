@@ -48,7 +48,7 @@ export function FriendPortraits() {
 export function Journey({ progress }: { progress: number }) {
   const reducedMotion = useReducedMotion()
   return (
-    <svg viewBox="0 0 190 74" className="h-16 w-44 text-primary/50" aria-hidden>
+    <svg viewBox="0 0 190 74" className="h-16 w-36 text-primary/50 min-[380px]:w-44" aria-hidden>
       <path
         d="M5 52C31 12 55 70 79 40s43-33 61-7c12 17 29 17 44-8"
         fill="none"
