@@ -1,4 +1,5 @@
-import { lazy, Suspense, useMemo, useState } from "react"
+import { lazy, Suspense, useId, useState } from "react"
+import { Form } from "react-aria-components"
 import type { CalendarDate } from "@internationalized/date"
 import type { RangeValue } from "@react-types/shared"
 import { ArrowLeft, ArrowRight, Check, Copy, LockKeyhole, Moon, Plus, Sun } from "lucide-react"
@@ -17,8 +18,10 @@ import {
   recentPeople,
   personFromEmail,
   toggleDaypart,
+  dateRangeError,
   type HostStep,
   type Person,
+  type MomentView,
 } from "./model"
 
 const WarmlyDateRangePicker = lazy(async () => {
@@ -26,7 +29,7 @@ const WarmlyDateRangePicker = lazy(async () => {
   return { default: module.WarmlyDateRangePicker }
 })
 
-type PlanState = {
+export type PlanState = {
   activityId: string
   name: string
   duration: number
@@ -69,23 +72,7 @@ export function HostFlow({ step, onStepChange, onPreviewGuest, dark, onDarkChang
   const goNext = () => onStepChange(hostSteps[Math.min(hostSteps.length - 1, index + 1)])
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col px-4 py-5 sm:px-7 sm:py-7">
-      <header className="mb-5 flex items-center justify-between">
-        <span className="font-heading text-xl font-semibold text-primary">warmly</span>
-        <div className="flex items-center gap-3">
-          {step !== "sign-in" && step !== "calendar" ? <Journey progress={stepProgress[step]} /> : null}
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={dark ? "Use light theme" : "Use dark theme"}
-            onClick={() => onDarkChange(!dark)}
-          >
-            {dark ? <Sun /> : <Moon />}
-          </Button>
-        </div>
-      </header>
-
-      <section className="grid flex-1 place-items-center pb-8">
+    <HostFrame step={step} dark={dark} onDarkChange={onDarkChange}>
         {step === "sign-in" && <SignIn onContinue={goNext} />}
         {step === "calendar" && <CalendarAccess onBack={goBack} onContinue={goNext} />}
         {step === "create" && (
@@ -113,12 +100,33 @@ export function HostFlow({ step, onStepChange, onPreviewGuest, dark, onDarkChang
           <ConfirmPlan plan={plan} selected={selectedMoment} people={people} onBack={goBack} onContinue={goNext} />
         )}
         {step === "success" && <Success planName={plan.name} selected={selectedMoment} />}
-      </section>
+    </HostFrame>
+  )
+}
+
+export function HostFrame({ step, dark, onDarkChange, children }: {
+  step: HostStep
+  dark: boolean
+  onDarkChange: (dark: boolean) => void
+  children: React.ReactNode
+}) {
+  return (
+    <main className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col px-4 py-5 sm:px-7 sm:py-7">
+      <header className="mb-5 flex items-center justify-between">
+        <span className="font-heading text-xl font-semibold text-primary">warmly</span>
+        <div className="flex items-center gap-3">
+          {step !== "sign-in" && step !== "calendar" ? <Journey progress={stepProgress[step]} /> : null}
+          <Button variant="ghost" size="icon" aria-label={dark ? "Use light theme" : "Use dark theme"} onClick={() => onDarkChange(!dark)}>
+            {dark ? <Sun /> : <Moon />}
+          </Button>
+        </div>
+      </header>
+      <section className="grid flex-1 place-items-center pb-8">{children}</section>
     </main>
   )
 }
 
-function Shell({
+export function Shell({
   eyebrow,
   title,
   copy,
@@ -146,7 +154,7 @@ function Shell({
   )
 }
 
-function SignIn({ onContinue }: { onContinue: () => void }) {
+export function SignIn({ onContinue }: { onContinue: () => void }) {
   return (
     <div className="grid w-full max-w-4xl items-stretch gap-5 md:grid-cols-[0.9fr_1.1fr]">
       <Card className="justify-between rounded-[2rem] border-0 bg-primary px-5 py-8 text-primary-foreground shadow-xl">
@@ -188,7 +196,7 @@ function GoogleMark() {
   )
 }
 
-function CalendarAccess({ onBack, onContinue }: { onBack: () => void; onContinue: () => void }) {
+export function CalendarAccess({ onBack, onContinue }: { onBack: () => void; onContinue: () => void }) {
   return (
     <Shell
       eyebrow="Calendar access"
@@ -216,7 +224,7 @@ function CalendarAccess({ onBack, onContinue }: { onBack: () => void; onContinue
   )
 }
 
-function CreatePlan({
+export function CreatePlan({
   plan,
   onPlanChange,
   onBack,
@@ -227,6 +235,10 @@ function CreatePlan({
   onBack: () => void
   onContinue: () => void
 }) {
+  const formId = useId()
+  const [datesComplete, setDatesComplete] = useState(true)
+  const dateError = dateRangeError(plan.dateRange)
+  const invalid = !datesComplete || !!dateError || !plan.name.trim() || plan.name.trim().length > 120
   const selectActivity = (id: string) => {
     const activity = activityPlan(id)
     if (activity) onPlanChange({ ...plan, ...activity })
@@ -238,7 +250,7 @@ function CreatePlan({
       title="What shall we make time for?"
       copy="Start with the feeling. You can adjust everything before inviting anyone."
       className="max-w-3xl"
-      footer={<><Button variant="ghost" onClick={onBack}><ArrowLeft /> Back</Button><Button onClick={onContinue}>Invite friends <ArrowRight /></Button></>}
+      footer={<><Button variant="ghost" onClick={onBack}><ArrowLeft /> Back</Button><Button type="submit" form={formId} disabled={invalid}>Invite friends <ArrowRight /></Button></>}
     >
       <div className="grid gap-7">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -246,25 +258,29 @@ function CreatePlan({
             <Button
               key={activity.id}
               variant={plan.activityId === activity.id ? "default" : "outline"}
-              className="h-auto justify-start rounded-2xl px-4 py-4 text-left"
+              className="h-auto min-w-0 justify-start rounded-2xl px-3 py-4 text-left sm:px-4"
               aria-pressed={plan.activityId === activity.id}
               onClick={() => selectActivity(activity.id)}
             >
-              <span className="text-lg">{activity.icon}</span>
-              <span>{activity.label}</span>
+              <span className="shrink-0 text-lg">{activity.icon}</span>
+              <span className="min-w-0 whitespace-normal">{activity.label}</span>
             </Button>
           ))}
         </div>
+        <Form id={formId} className="grid gap-7" onSubmit={(event) => { event.preventDefault(); if (!invalid) onContinue() }}>
         <label className="grid gap-2 text-sm font-semibold">
           Plan name
-          <Input value={plan.name} onChange={(event) => onPlanChange({ ...plan, name: event.target.value })} className="h-11 rounded-xl" />
+          <Input required maxLength={120} value={plan.name} onChange={(event) => onPlanChange({ ...plan, name: event.target.value })} className="h-11 rounded-xl" />
         </label>
         <Suspense fallback={<div className="h-[4.75rem] animate-pulse rounded-2xl bg-secondary/70" aria-label="Loading date picker" />}>
           <WarmlyDateRangePicker
             value={plan.dateRange}
             onChange={(dateRange) => dateRange && onPlanChange({ ...plan, dateRange })}
+            onValidityChange={setDatesComplete}
           />
         </Suspense>
+        {!datesComplete ? <p role="alert" className="text-sm text-destructive">Complete both dates before continuing.</p> : null}
+        </Form>
         <div className="grid gap-2">
           <p className="text-sm font-semibold">How long?</p>
           <div className="flex flex-wrap gap-2">
@@ -291,28 +307,39 @@ function CreatePlan({
   )
 }
 
-function InviteFriends({
+export function InviteFriends({
   people,
   onPeopleChange,
   onBack,
   onContinue,
   onPreviewGuest,
+  onInvite,
+  showRecent = true,
+  connectedCalendarCount = 2,
+  onRemove,
+  onReissue,
 }: {
   people: Person[]
   onPeopleChange: (people: Person[]) => void
   onBack: () => void
   onContinue: () => void
-  onPreviewGuest: () => void
+  onPreviewGuest?: () => void
+  onInvite?: (person: Person) => Promise<boolean>
+  showRecent?: boolean
+  connectedCalendarCount?: number
+  onRemove?: (person: Person) => void
+  onReissue?: (person: Person) => void
 }) {
   const [email, setEmail] = useState("")
   const addPerson = (person: Person) => {
     if (people.some((item) => item.email === person.email)) return
     onPeopleChange([...people, { ...person, status: "invited" }])
   }
-  const inviteEmail = () => {
+  const inviteEmail = async () => {
     const person = personFromEmail(email)
     if (!person) return
-    addPerson(person)
+    if (onInvite) { if (!await onInvite(person)) return }
+    else addPerson(person)
     setEmail("")
   }
 
@@ -328,7 +355,7 @@ function InviteFriends({
           <Input type="email" inputMode="email" autoComplete="email" placeholder="friend@example.com" value={email} onChange={(event) => setEmail(event.target.value)} className="h-10 rounded-xl" />
           <Button type="submit"><Plus /> Invite</Button>
         </form>
-        <div>
+        {showRecent ? <div>
           <div className="mb-2 flex items-baseline justify-between">
             <p className="text-sm font-semibold">Recent people</p>
             <p className="text-xs text-muted-foreground">From earlier plans</p>
@@ -344,7 +371,7 @@ function InviteFriends({
               )
             })}
           </div>
-        </div>
+        </div> : <p className="text-xs leading-5 text-muted-foreground">Copy each private invitation link and send it to your friend. Email delivery is not enabled yet.</p>}
         <div>
           <p className="mb-1 text-sm font-semibold">People in this plan</p>
           <p className="mb-3 text-xs leading-5 text-muted-foreground">Ready means they joined and shared availability. Invited means you’re waiting for their reply.</p>
@@ -354,41 +381,49 @@ function InviteFriends({
                 <span className="grid size-9 place-items-center rounded-full bg-primary/12 text-xs font-semibold text-primary">{person.initials}</span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold">{person.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">{person.status === "host" ? "2 calendars connected" : person.email}</p>
+                  <p className="truncate text-xs text-muted-foreground">{person.status === "host" ? `${connectedCalendarCount} calendars connected` : person.email}</p>
                 </div>
                 <Badge variant={person.status === "host" ? "default" : "secondary"} className="capitalize">{person.status}</Badge>
+                {person.inviteUrl ? <Button variant="ghost" size="icon" aria-label={`Copy invitation for ${person.name}`} onClick={() => navigator.clipboard.writeText(person.inviteUrl!).catch(() => undefined)}><Copy /></Button> : null}
+                {onReissue && person.invitationId && !person.inviteUrl ? <Button variant="ghost" size="sm" onClick={() => onReissue(person)}>New link</Button> : null}
+                {onRemove && person.status !== "host" ? <Button variant="ghost" size="sm" onClick={() => onRemove(person)}>Remove</Button> : null}
               </div>
             ))}
           </div>
+          {people.filter((person) => person.inviteUrl).map((person) => <label key={person.email} className="mt-3 grid gap-1 text-xs text-muted-foreground">Private link for {person.name}<Input readOnly value={person.inviteUrl} onFocus={(event) => event.target.select()} /></label>)}
+          {onReissue ? <p className="mt-3 text-xs text-muted-foreground">Links are shown only when created. New link invalidates the previous invitation.</p> : null}
         </div>
-        <Button variant="ghost" className="mx-auto" onClick={onPreviewGuest}>Preview the guest invite</Button>
+        {onPreviewGuest ? <Button variant="ghost" className="mx-auto" onClick={onPreviewGuest}>Preview the guest invite</Button> : null}
       </div>
     </Shell>
   )
 }
 
-function MomentPicker({
+export function MomentPicker({
   plan,
   selected,
   onSelectedChange,
   onBack,
   onContinue,
+  moments = candidateMoments,
 }: {
   plan: PlanState
   selected: string
   onSelectedChange: (id: string) => void
   onBack: () => void
   onContinue: () => void
+  moments?: MomentView[]
 }) {
   return (
     <Shell
       eyebrow="Shared availability"
       title="These moments look good."
       copy={`${plan.name} · ${formatDate(plan.dateRange.start)} to ${formatDate(plan.dateRange.end)}`}
-      footer={<><Button variant="ghost" onClick={onBack}><ArrowLeft /> Back</Button><Button onClick={onContinue}>Review this time <ArrowRight /></Button></>}
+      footer={<><Button variant="ghost" onClick={onBack}><ArrowLeft /> Back</Button><Button disabled={!moments.some((moment) => moment.id === selected)} onClick={onContinue}>Review this time <ArrowRight /></Button></>}
     >
       <div className="grid gap-3">
-        {candidateMoments.map((moment) => (
+        {!moments.length ? <p className="py-4 text-center text-sm text-muted-foreground">No shared moments yet. Wait for friends to connect their calendars, then refresh availability.</p> : null}
+        {moments.map((moment) => (
           <button
             key={moment.id}
             type="button"
@@ -406,26 +441,33 @@ function MomentPicker({
   )
 }
 
-function ConfirmPlan({
+export function ConfirmPlan({
   plan,
   selected,
   people,
   onBack,
   onContinue,
+  moments = candidateMoments,
+  actionLabel = "Create the event",
+  preview = true,
 }: {
   plan: PlanState
   selected: string
   people: Person[]
   onBack: () => void
   onContinue: () => void
+  moments?: MomentView[]
+  actionLabel?: string
+  preview?: boolean
 }) {
-  const moment = useMemo(() => candidateMoments.find((item) => item.id === selected) ?? candidateMoments[0], [selected])
+  const moment = moments.find((item) => item.id === selected)
+  if (!moment) return null
   return (
     <Shell
       eyebrow="One last look"
       title={plan.name}
-      copy="You will create the calendar event and everyone invited will receive it."
-      footer={<><Button variant="ghost" onClick={onBack}><ArrowLeft /> Back</Button><Button onClick={onContinue}>Create the event <Check /></Button></>}
+      copy={preview ? "You will create the calendar event and everyone invited will receive it." : "You will create the calendar event for people who joined. Pending invitations are not included."}
+      footer={<><Button variant="ghost" onClick={onBack}><ArrowLeft /> Back</Button><Button onClick={onContinue}>{actionLabel} <Check /></Button></>}
     >
       <div className="grid gap-3 rounded-3xl bg-secondary/60 p-5">
         <SummaryRow label="When" value={`${moment.day} at ${moment.time}`} />
@@ -441,14 +483,15 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
   return <div className="flex justify-between gap-4 text-sm"><span className="text-muted-foreground">{label}</span><strong className="text-right">{value}</strong></div>
 }
 
-function Success({ planName, selected }: { planName: string; selected: string }) {
-  const moment = candidateMoments.find((item) => item.id === selected) ?? candidateMoments[0]
+export function Success({ planName, selected, moments = candidateMoments, preview = true }: { planName: string; selected: string; moments?: MomentView[]; preview?: boolean }) {
+  const moment = moments.find((item) => item.id === selected)
+  if (!moment) return null
   return (
-    <Shell eyebrow="It’s on" title="A little time together." copy="The invitation is ready and everyone’s calendar details stayed private.">
+    <Shell eyebrow="It’s on" title="A little time together." copy={preview ? "The invitation is ready and everyone’s calendar details stayed private." : "The calendar event is created, and everyone’s calendar details stayed private."}>
       <div className="grid justify-items-center gap-5 text-center">
         <span className="grid size-16 place-items-center rounded-full bg-primary text-primary-foreground"><Check className="size-7" /></span>
         <div><p className="font-heading text-2xl font-semibold">{planName}</p><p className="mt-1 text-sm text-muted-foreground">{moment.day} · {moment.time}</p></div>
-        <Button variant="outline" className="rounded-full"><Copy /> Copy invitation link</Button>
+        {preview ? <Button variant="outline" className="rounded-full"><Copy /> Copy invitation link</Button> : null}
       </div>
     </Shell>
   )
