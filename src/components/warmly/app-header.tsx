@@ -3,11 +3,17 @@ import { Moon, Sun } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Wordmark } from "./brand"
 
-export function AppHeader({ dark, onDarkChange, children }: {
+type AppHeaderProps = {
   dark: boolean
   onDarkChange: (dark: boolean) => void
   children?: ReactNode
-}) {
+}
+
+export function StandaloneAppHeader(props: AppHeaderProps) {
+  return <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-7 sm:py-7"><AppHeader {...props} /></div>
+}
+
+export function AppHeader({ dark, onDarkChange, children }: AppHeaderProps) {
   return (
     <header className="flex min-w-0 items-center justify-between gap-3">
       <Wordmark />

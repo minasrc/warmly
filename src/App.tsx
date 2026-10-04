@@ -1,11 +1,11 @@
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useState } from "react"
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { GuestFlow } from "@/features/scheduling/guest-flow"
 import { HostFlow } from "@/features/scheduling/host-flow"
 import type { HostStep } from "@/features/scheduling/model"
 import { appMode } from "@/config/environment"
 import { Shell } from "@/features/scheduling/host-flow"
-import { AppHeader } from "@/components/warmly/app-header"
+import { StandaloneAppHeader } from "@/components/warmly/app-header"
 import { readThemePreference, themeStorageKey } from "@/config/theme"
 
 const LiveApp = lazy(() => import("@/features/scheduling/live-app"))
@@ -29,13 +29,15 @@ function App() {
     }
   })
   const [route, setRoute] = useState(readRoute)
+  const manualTheme = useRef<boolean | null>(null)
   const [dark, setDark] = useState(() => readThemePreference(themeStorage) ?? window.matchMedia("(prefers-color-scheme: dark)").matches)
   const onDarkChange = useCallback((value: boolean) => {
+    manualTheme.current = value
     setDark(value)
     try { window.localStorage.setItem(themeStorageKey, value ? "dark" : "light") } catch { /* Session-only choice when storage is unavailable. */ }
   }, [])
   const standaloneHeader = production.live
-    ? "error" in production || window.location.pathname.startsWith("/invite") || window.location.pathname === "/calendar-connected"
+    ? "error" in production
     : route.mode === "guest"
 
   useEffect(() => {
@@ -52,10 +54,13 @@ function App() {
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)")
     const syncSystem = () => {
-      if (readThemePreference(themeStorage) === null) setDark(media.matches)
+      if (readThemePreference(themeStorage, manualTheme.current) === null) setDark(media.matches)
     }
     const syncStorage = (event: StorageEvent) => {
-      if (event.key === themeStorageKey || event.key === null) setDark(readThemePreference(themeStorage) ?? media.matches)
+      if (event.key === themeStorageKey || event.key === null) {
+        manualTheme.current = null
+        setDark(readThemePreference(themeStorage) ?? media.matches)
+      }
     }
     media.addEventListener("change", syncSystem)
     window.addEventListener("storage", syncStorage)
@@ -77,7 +82,7 @@ function App() {
   return (
     <TooltipProvider>
       <div className="min-h-dvh bg-background text-foreground">
-        {standaloneHeader ? <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-7 sm:py-7"><AppHeader dark={dark} onDarkChange={onDarkChange} /></div> : null}
+        {standaloneHeader ? <StandaloneAppHeader dark={dark} onDarkChange={onDarkChange} /> : null}
         {production.live ? (
           "error" in production ? <main className="grid min-h-dvh place-items-center px-4"><Shell title="Warmly isn’t configured yet."><p role="alert" className="text-center text-sm">{production.error}</p></Shell></main>
             : <Suspense fallback={<p role="status" className="grid min-h-dvh place-items-center">Loading Warmly...</p>}><LiveApp dark={dark} onDarkChange={onDarkChange} /></Suspense>
