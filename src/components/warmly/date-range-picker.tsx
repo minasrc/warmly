@@ -59,7 +59,7 @@ export function WarmlyDateRangePicker({ value, onChange, onValidityChange }: Pro
         </Button>
       </Group>
       <FieldError className="text-sm text-destructive" />
-      <Popover className="w-[min(92vw,22rem)] rounded-3xl border bg-popover p-4 text-popover-foreground shadow-xl outline-none entering:animate-in entering:fade-in exiting:animate-out exiting:fade-out">
+      <Popover className="w-[min(92vw,22rem)] rounded-3xl border bg-popover p-4 text-popover-foreground shadow-xl outline-none entering:animate-in entering:fade-in exiting:animate-out exiting:fade-out motion-reduce:animate-none">
         <Dialog className="outline-none">
           <RangeCalendar>
             <header className="mb-3 grid grid-cols-[auto_1fr_auto] items-center">
