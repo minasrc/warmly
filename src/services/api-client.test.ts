@@ -1,7 +1,32 @@
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { ApiClient, ApiClientError } from "./api-client"
+import { anonymousSession } from "./auth-session"
+
+afterEach(() => vi.unstubAllGlobals())
 
 describe("ApiClient", () => {
+  it("invokes the default fetch with its global receiver", async () => {
+    const nativeFetch = vi.fn(function (this: unknown) {
+      expect(this).toBe(globalThis)
+      return Promise.resolve(Response.json({ connections: [] }))
+    })
+    vi.stubGlobal("fetch", nativeFetch)
+    const client = new ApiClient("https://api.example.com", anonymousSession)
+    await expect(client.listCalendarConnections()).resolves.toEqual({ connections: [] })
+    expect(nativeFetch).toHaveBeenCalledOnce()
+  })
+
+  it("handles unreadable responses without exposing their body", async () => {
+    const fetcher = vi.fn(async () => new Response("private diagnostic", {
+      status: 502,
+      headers: { "x-request-id": "request-1" },
+    }))
+    const client = new ApiClient("https://api.example.com", anonymousSession, fetcher)
+    await expect(client.listPlans()).rejects.toEqual(
+      new ApiClientError(502, "internal_error", "request-1", "The server returned an unreadable response"),
+    )
+  })
+
   it("adds the current bearer token without exposing it in returned data", async () => {
     const fetcher = vi.fn(async (_input: URL | RequestInfo, init?: RequestInit) => {
       const headers = new Headers(init?.headers)

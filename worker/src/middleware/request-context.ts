@@ -16,9 +16,13 @@ export const requestContext = createMiddleware<AppEnvironment>(async (context, n
     console.log(JSON.stringify({
       requestId,
       method: context.req.method,
-      path: new URL(context.req.url).pathname,
+      path: safeRequestPath(new URL(context.req.url).pathname),
       status: context.res.status,
       durationMs: Date.now() - startedAt,
     }))
   }
 })
+
+export function safeRequestPath(path: string) {
+  return path.replace(/(\/v1\/invitations\/)[^/]+/g, "$1[redacted]")
+}

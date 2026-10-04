@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import type { AppEnvironment } from "../context"
 import { rateLimitBucket } from "./rate-limit"
 import { securityHeaders } from "./security"
+import { safeRequestPath } from "./request-context"
 
 describe("API protection", () => {
   it("sets privacy and browser hardening headers", async () => {
@@ -20,5 +21,10 @@ describe("API protection", () => {
     const bucket = await rateLimitBucket("global-v1", "203.0.113.5")
     expect(bucket).toMatch(/^[a-f0-9]{64}$/)
     expect(bucket).not.toContain("203.0.113.5")
+  })
+
+  it("redacts invitation secrets from request paths", () => {
+    expect(safeRequestPath("/v1/invitations/private-token/accept")).toBe("/v1/invitations/[redacted]/accept")
+    expect(safeRequestPath("/v1/plans/plan-id/invitations")).toBe("/v1/plans/plan-id/invitations")
   })
 })

@@ -26,6 +26,21 @@ const responseSchema = z.object({
 export const responses = new Hono<AppEnvironment>()
 responses.use("*", requireUser)
 
+responses.get("/:planId/response", async (context) => {
+  const planId = parseId(context.req.param("planId"))
+  const client = createUserClient(context.env, context.get("accessToken"))
+  const { data: plan } = await client.from("plans").select("id").eq("id", planId).maybeSingle()
+  if (!plan) throw new HttpError(404, "not_found", "Plan not found")
+  const { data, error } = await client.from("guest_responses")
+    .select("submitted_at,guest_response_slots(starts_at,ends_at)")
+    .eq("plan_id", planId).eq("user_id", context.get("user").id).maybeSingle()
+  if (error) throw new HttpError(503, "temporarily_unavailable", "Your response could not be loaded")
+  return context.json({
+    submittedAt: data?.submitted_at ?? null,
+    slots: (data?.guest_response_slots ?? []).map((slot) => ({ startsAt: slot.starts_at, endsAt: slot.ends_at })),
+  })
+})
+
 responses.put("/:planId/response", async (context) => {
   const planId = parseId(context.req.param("planId"))
   const input = await parseJson(context.req.raw, responseSchema)
@@ -66,18 +81,20 @@ responses.get("/:planId/response-summary", async (context) => {
   }
 
   const admin = createAdminClient(context.env)
-  const { data: activeMembers } = await admin
+  const { data: activeMembers, error: membersError } = await admin
     .from("plan_members")
     .select("user_id")
     .eq("plan_id", planId)
     .neq("status", "removed")
+  if (membersError) throw new HttpError(503, "temporarily_unavailable", "Response totals could not be loaded")
   const activeUserIds = (activeMembers ?? []).map((member) => member.user_id)
   if (!activeUserIds.length) return context.json({ moments: [] })
-  const { data: planResponses } = await admin
+  const { data: planResponses, error: responsesError } = await admin
     .from("guest_responses")
     .select("id")
     .eq("plan_id", planId)
     .in("user_id", activeUserIds)
+  if (responsesError) throw new HttpError(503, "temporarily_unavailable", "Response totals could not be loaded")
   const responseIds = (planResponses ?? []).map((response) => response.id)
   if (!responseIds.length) return context.json({ moments: [] })
   const { data: slots, error } = await admin

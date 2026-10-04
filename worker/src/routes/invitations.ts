@@ -22,7 +22,15 @@ invitationManagement.post("/:planId/invitations", async (context) => {
   const tokenHash = await sha256Bytea(token)
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
   const client = createUserClient(context.env, context.get("accessToken"))
-  const { data, error } = await client.from("invitations").insert({
+  const { data: plan } = await client.from("plans").select("host_id,status").eq("id", planId).maybeSingle()
+  if (!plan || plan.host_id !== context.get("user").id) throw new HttpError(403, "forbidden", "Only the host can invite people")
+  if (plan.status !== "collecting" && plan.status !== "draft") throw new HttpError(409, "conflict", "This plan is no longer accepting invitations")
+  if (email === context.get("user").email?.toLowerCase()) throw new HttpError(409, "conflict", "You are already the host")
+  const { data: member, error: memberError } = await createAdminClient(context.env).from("plan_members")
+    .select("user_id,profiles!inner(email)").eq("plan_id", planId).eq("profiles.email", email).neq("status", "removed").limit(1).maybeSingle()
+  if (memberError) throw new HttpError(503, "temporarily_unavailable", "Participant status could not be checked")
+  if (member) throw new HttpError(409, "conflict", "This person is already in the plan")
+  const { data, error } = await createAdminClient(context.env).from("invitations").insert({
     plan_id: planId,
     invited_by: context.get("user").id,
     email,
@@ -47,7 +55,9 @@ invitationManagement.delete("/:planId/invitations/:invitationId", async (context
   const planId = parseId(context.req.param("planId"))
   const invitationId = parseId(context.req.param("invitationId"))
   const client = createUserClient(context.env, context.get("accessToken"))
-  const { data, error } = await client
+  const { data: plan } = await client.from("plans").select("host_id").eq("id", planId).maybeSingle()
+  if (!plan || plan.host_id !== context.get("user").id) throw new HttpError(403, "forbidden", "Only the host can cancel invitations")
+  const { data, error } = await createAdminClient(context.env)
     .from("invitations")
     .update({ status: "revoked", revoked_at: new Date().toISOString() })
     .eq("id", invitationId)
@@ -78,7 +88,7 @@ invitationManagement.delete("/:planId/members/:memberId", async (context) => {
   if (memberId === plan.host_id) throw new HttpError(409, "conflict", "The host cannot be removed")
   const { data, error } = await client
     .from("plan_members")
-    .update({ status: "removed" })
+    .update({ status: "removed", removed_at: new Date().toISOString() })
     .eq("plan_id", planId)
     .eq("user_id", memberId)
     .neq("status", "removed")
@@ -111,11 +121,13 @@ invitationAccess.get("/:token", async (context) => {
   }
   const { data: plan } = await admin
     .from("plans")
-    .select("id,name,start_date,end_date,duration_minutes,time_zone")
+    .select("id,name,host_id,status,start_date,end_date,duration_minutes,time_zone")
     .eq("id", invitation.plan_id)
     .single()
   if (!plan) throw new HttpError(404, "not_found", "Plan not found")
-  return context.json({ plan })
+  const { data: host } = await admin.from("profiles").select("display_name").eq("id", plan.host_id).maybeSingle()
+  const { host_id: _hostId, ...summary } = plan
+  return context.json({ plan: summary, hostName: host?.display_name ?? "A friend" })
 })
 
 invitationAccess.post("/:token/accept", requireUser, async (context) => {
@@ -127,10 +139,10 @@ invitationAccess.post("/:token/accept", requireUser, async (context) => {
   }
   const result = data[0] as { outcome: string; accepted_plan_id: string | null }
   if (result.outcome === "email_mismatch") throw new HttpError(403, "forbidden", "Invitation belongs to another email")
-  if (result.outcome !== "accepted" || !result.accepted_plan_id) {
+  if (!["accepted", "already_accepted"].includes(result.outcome) || !result.accepted_plan_id) {
     throw new HttpError(409, "conflict", "Invitation is invalid or expired")
   }
-  await writeAuditEvent(context.env, {
+  if (result.outcome === "accepted") await writeAuditEvent(context.env, {
     action: "invitation.accepted",
     actorId: context.get("user").id,
     requestId: context.get("requestId"),

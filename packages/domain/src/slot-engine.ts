@@ -41,6 +41,7 @@ export function computeCandidateSlots(request: CandidateRequest): CandidateSlot[
     const localEnd = date.toPlainDateTime(endTime).toZonedDateTime(window.timeZone)
 
     for (let cursor = localStart; Temporal.ZonedDateTime.compare(cursor.add(duration), localEnd) <= 0; cursor = cursor.add(increment)) {
+      if (window.allowedDayparts?.length && !window.allowedDayparts.includes(daypartForHour(cursor.hour))) continue
       const start = cursor.toInstant()
       const end = cursor.add(duration).toInstant()
       const availableParticipantIds = participants

@@ -21,6 +21,7 @@ export type CandidateWindow = {
   dayStart: string
   dayEnd: string
   incrementMinutes: number
+  allowedDayparts?: Daypart[]
 }
 
 export type CandidateRequest = {
@@ -37,6 +38,10 @@ export type CandidateSlot = {
   availableParticipantIds: string[]
   unavailableCount: number
   score: number
+}
+
+export type CandidateMoment = Omit<CandidateSlot, "availableParticipantIds"> & {
+  availableCount: number
 }
 
 export type ApiErrorCode =

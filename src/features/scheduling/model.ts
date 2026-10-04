@@ -1,4 +1,11 @@
-import { parseDate } from "@internationalized/date"
+import { parseDate, type CalendarDate } from "@internationalized/date"
+import type { RangeValue } from "@react-types/shared"
+
+export function dateRangeError(range: RangeValue<CalendarDate>) {
+  if (range.end.compare(range.start) < 0) return "The end date must be on or after the start date."
+  if (range.end.compare(range.start.add({ days: 61 })) > 0) return "Choose a range of no more than 62 days."
+  return null
+}
 
 export type HostStep =
   | "sign-in"
@@ -20,7 +27,19 @@ export type Person = {
   email: string
   name: string
   initials: string
-  status: "host" | "invited" | "ready"
+  status: "host" | "invited" | "ready" | "joined"
+  inviteUrl?: string
+  invitationId?: string
+  userId?: string
+}
+
+export type MomentView = {
+  id: string
+  day: string
+  time: string
+  note: string
+  startsAt?: string
+  endsAt?: string
 }
 
 export const activities: Activity[] = [

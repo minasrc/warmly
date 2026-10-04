@@ -12,6 +12,8 @@ export type CreatePlanRecord = {
   day_end: string
   quorum: number
   increment_minutes: number
+  allowed_dayparts: string[]
+  require_all: boolean
 }
 
 export class PlanRepository {

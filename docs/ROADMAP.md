@@ -11,7 +11,21 @@ React web app
 
 The browser owns presentation and user input. It never receives provider refresh tokens, raw provider payloads, or another participant's busy intervals. The Worker owns authorization, OAuth, calendar orchestration, candidate calculation, and event creation. Postgres owns durable product state; Vault owns refresh tokens.
 
-Implementation status: credential-free backend work through booking is implemented, including invitation and participant revocation, calendar grant revocation, audit events, request limits, and security headers. Live identity, provider verification, email delivery, deployments, and the final frontend connection still depend on external configuration.
+Implementation status: credential-free MVP code through the live frontend and booking is implemented. This includes plan/history recovery, invitation and participant revocation, lost-link replacement, same-account invitation reopening, saved guest responses, writable-calendar selection, pending-booking reconciliation, server-only Vault grants, request limits, audit events, and frontend/API security headers. Local unit, fake-provider route, SQL privilege/RLS, and browser regression checks establish local behavior, not real provider verification.
+
+## Remaining launch dependencies
+
+| Dependency | Why user input is needed |
+| --- | --- |
+| Supabase project and Google Auth setup | Account ownership, project configuration, live URL/key, approved identity redirects |
+| Google Cloud Calendar OAuth setup | Consent screen, client ID/secret, provider verification, approved callback |
+| Cloudflare and production domains | Account access, domain ownership, deployment/launch approval, infrastructure log redaction |
+| Live integration verification | Real Google/Supabase accounts and writable calendars; fakes cannot prove consent, tokens, callback behavior, or delivery |
+| Email delivery | Provider choice, credentials, sender identity/domain; manual private-link copying works now |
+| Retention, deletion, and backups | Product/legal policy before implementing destructive retention jobs or promising deletion coverage |
+| Legal, support, and monitoring | Approved privacy/terms content, support destination, monitoring provider and alert recipients |
+
+No production deployment, legal commitment, or destructive data-retention policy is implied by merging this implementation.
 
 ## Phase 1: foundations
 
@@ -53,7 +67,7 @@ Requires: Google Cloud project, OAuth consent-screen configuration, client ID an
 2. Merge each participant's selected calendars before group comparison.
 3. Generate candidates in the host's local wall-clock zone, store instants in UTC, and preserve IANA zones.
 4. Apply duration, date range, host daypart constraints, participant preferences, and quorum.
-5. Cache availability briefly without persisting event details.
+5. Calculate availability on demand without retaining raw event data; shared caching is intentionally omitted until operational requirements justify it.
 6. Return aggregate candidate suggestions only.
 7. Cover daylight-saving gaps, folds, month boundaries, and partial-provider failures.
 

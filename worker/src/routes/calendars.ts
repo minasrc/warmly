@@ -21,7 +21,7 @@ calendars.get("/connections", async (context) => {
   const client = createUserClient(context.env, context.get("accessToken"))
   const { data, error } = await client
     .from("calendar_connections")
-    .select("id,provider,account_email,status,connected_at,selected_calendars(provider_calendar_id,display_name,time_zone,is_primary)")
+    .select("id,provider,account_email,status,connected_at,granted_scopes,selected_calendars(provider_calendar_id,display_name,time_zone,is_primary)")
     .order("connected_at")
   if (error) throw new HttpError(500, "internal_error", "Calendar connections could not be loaded")
   return context.json({ connections: data })

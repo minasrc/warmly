@@ -9,3 +9,9 @@ Google availability access is limited to CalendarList and FreeBusy scopes. Event
 API responses use no-store, content-type, framing, referrer, permissions, and transport security headers. Request throttling uses short-lived SHA-256 request buckets instead of raw network addresses. Calendar disconnect revokes the Google grant before clearing selected calendars and replacing the stored Vault secret with an empty value.
 
 Audit metadata is intentionally allowlisted. It may contain internal identifiers and counts, but never email addresses, calendar names, event details, OAuth material, provider responses, or authorization headers.
+
+Public candidate responses contain times and aggregate counts, never participant identifiers. The browser retains newly issued invitation URLs only in component memory; replacing a lost link revokes the old one. Invitation paths are redacted in Worker logs, and frontend referrers are disabled.
+
+Supabase's default function grants are explicitly revoked for both browser roles. Only membership-checked user functions are granted back to authenticated users; OAuth/Vault, rate-limit, and booking-finalization functions remain server-only. Regression tests check actual privileges, including direct Vault access. Hosts cannot directly insert membership rows or restore removed members. Invitation hashes can only be written through authorized Worker routes, and disconnects cannot bypass server-side revocation/cleanup through direct table deletion.
+
+An accepted invitation may be resolved again only by its original authenticated recipient while their membership remains active. Resolution does not repeat acceptance or restore removed consent.

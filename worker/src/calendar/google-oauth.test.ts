@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import { GoogleOAuthClient } from "./google-oauth"
+import { GoogleGrantError, GoogleOAuthClient } from "./google-oauth"
 
 const config = {
   clientId: "client-id",
@@ -58,5 +58,18 @@ describe("GoogleOAuthClient", () => {
   it("treats an already-invalid token as successfully revoked", async () => {
     const fetcher = vi.fn(async () => new Response(null, { status: 400 }))
     await expect(new GoogleOAuthClient(config, fetcher as typeof fetch).revoke("expired")).resolves.toBeUndefined()
+  })
+
+  it("distinguishes revoked grants from temporary refresh failures", async () => {
+    const revoked = new GoogleOAuthClient(config, vi.fn(async () => Response.json({ error: "invalid_grant" }, { status: 400 })) as typeof fetch)
+    await expect(revoked.refresh("fake")).rejects.toBeInstanceOf(GoogleGrantError)
+    const temporary = new GoogleOAuthClient(config, vi.fn(async () => new Response(null, { status: 503 })) as typeof fetch)
+    await expect(temporary.refresh("fake")).rejects.toMatchObject({ status: 502 })
+  })
+
+  it("bounds provider requests and sanitizes network failures", async () => {
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => { throw new Error("sensitive-network-details") })
+    await expect(new GoogleOAuthClient(config, fetcher as typeof fetch).refresh("fake")).rejects.toMatchObject({ status: 502, message: "The calendar provider is temporarily unavailable" })
+    expect(fetcher.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal)
   })
 })

@@ -2,7 +2,7 @@ import type { Daypart } from "@warmly/domain"
 import type { Bindings } from "../env"
 import { parseEnvironment } from "../env"
 import { GoogleCalendarProvider } from "../calendar/google"
-import { GoogleOAuthClient } from "../calendar/google-oauth"
+import { GoogleGrantError, GoogleOAuthClient } from "../calendar/google-oauth"
 import { HttpError } from "../http-error"
 import { createAdminClient, createUserClient } from "../supabase"
 import { findAggregateCandidates, type ConnectedParticipant } from "./availability"
@@ -15,7 +15,7 @@ export async function loadPlanCandidates(
   const userClient = createUserClient(bindings, accessToken)
   const { data: plan } = await userClient
     .from("plans")
-    .select("id,name,host_id,status,start_date,end_date,duration_minutes,time_zone,day_start,day_end,increment_minutes,quorum")
+    .select("id,name,host_id,status,start_date,end_date,duration_minutes,time_zone,day_start,day_end,increment_minutes,quorum,allowed_dayparts,require_all")
     .eq("id", planId)
     .maybeSingle()
   if (!plan) throw new HttpError(404, "not_found", "Plan not found")
@@ -27,11 +27,11 @@ export async function loadPlanCandidates(
     .eq("plan_id", planId)
     .neq("status", "removed")
   if (error || !members?.length) throw new HttpError(500, "internal_error", "Availability could not be loaded")
-  if (plan.quorum > members.length) {
+  if (!plan.require_all && plan.quorum > members.length) {
     throw new HttpError(409, "conflict", "The plan does not have enough participants for its quorum")
   }
   const userIds = members.map((member) => member.user_id)
-  const [{ data: preferences }, { data: connections }] = await Promise.all([
+  const [{ data: preferences, error: preferencesError }, { data: connections, error: connectionsError }] = await Promise.all([
     admin.from("availability_preferences")
       .select("user_id,preferred_dayparts")
       .eq("plan_id", planId)
@@ -40,6 +40,7 @@ export async function loadPlanCandidates(
       .select("id,user_id,status,selected_calendars(provider_calendar_id)")
       .in("user_id", userIds),
   ])
+  if (preferencesError || connectionsError) throw new HttpError(503, "temporarily_unavailable", "Availability could not be loaded")
   const preferencesByUser = new Map(
     (preferences ?? []).map((preference) => [preference.user_id, preference.preferred_dayparts as Daypart[]]),
   )
@@ -73,8 +74,8 @@ export async function loadPlanCandidates(
           accessToken: (await oauth.refresh(refreshToken)).access_token,
           calendarIds: connection.selected_calendars.map((calendar) => calendar.provider_calendar_id),
         }
-      } catch {
-        await admin.from("calendar_connections").update({ status: "needs_reauth" }).eq("id", connection.id)
+      } catch (failure) {
+        if (failure instanceof GoogleGrantError) await admin.from("calendar_connections").update({ status: "needs_reauth" }).eq("id", connection.id)
         return null
       }
     }))
@@ -95,9 +96,10 @@ export async function loadPlanCandidates(
       dayStart: plan.day_start,
       dayEnd: plan.day_end,
       incrementMinutes: plan.increment_minutes,
+      allowedDayparts: plan.allowed_dayparts as Daypart[],
     },
     durationMinutes: plan.duration_minutes,
-    quorum: plan.quorum,
+    quorum: plan.require_all ? members.length : plan.quorum,
   }, participants)
   return { plan, candidates }
 }

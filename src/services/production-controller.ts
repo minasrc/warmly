@@ -6,6 +6,8 @@ import { getSupabaseClient, supabaseSession } from "./supabase"
 type Navigator = (url: string) => void
 type AuthGateway = Pick<SupabaseClient, "auth">
 
+export type Identity = { id: string; email: string }
+
 export class ProductionController {
   readonly api: ApiClient
   private readonly auth: AuthGateway
@@ -32,6 +34,20 @@ export class ProductionController {
   async signOut() {
     const { error } = await this.auth.auth.signOut()
     if (error) throw error
+  }
+
+  async getIdentity(): Promise<Identity | null> {
+    const { data, error } = await this.auth.auth.getSession()
+    if (error) throw error
+    const user = data.session?.user
+    return user ? { id: user.id, email: user.email ?? "" } : null
+  }
+
+  observeIdentity(listener: (identity: Identity | null) => void) {
+    const { data } = this.auth.auth.onAuthStateChange((_event, session) => {
+      listener(session ? { id: session.user.id, email: session.user.email ?? "" } : null)
+    })
+    return () => data.subscription.unsubscribe()
   }
 
   async connectGoogleCalendar(access: "availability" | "booking" = "availability") {

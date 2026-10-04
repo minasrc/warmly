@@ -1,5 +1,10 @@
 import { z } from "zod"
 import { HttpError } from "../http-error"
+import { providerFetch } from "./provider-fetch"
+
+export class GoogleGrantError extends HttpError {
+  constructor() { super(409, "provider_error", "Calendar connection needs to be reconnected") }
+}
 
 const tokenSchema = z.object({
   access_token: z.string().min(1),
@@ -55,7 +60,7 @@ export class GoogleOAuthClient {
   }
 
   async exchangeCode(code: string, codeVerifier: string, redirectUri: string) {
-    const response = await this.fetcher("https://oauth2.googleapis.com/token", {
+    const response = await providerFetch(this.fetcher, "https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -72,7 +77,7 @@ export class GoogleOAuthClient {
   }
 
   async identity(accessToken: string) {
-    const response = await this.fetcher("https://openidconnect.googleapis.com/v1/userinfo", {
+    const response = await providerFetch(this.fetcher, "https://openidconnect.googleapis.com/v1/userinfo", {
       headers: { authorization: `Bearer ${accessToken}` },
     })
     if (!response.ok) throw new HttpError(502, "provider_error", "Google identity could not be verified")
@@ -82,7 +87,7 @@ export class GoogleOAuthClient {
   }
 
   async refresh(refreshToken: string) {
-    const response = await this.fetcher("https://oauth2.googleapis.com/token", {
+    const response = await providerFetch(this.fetcher, "https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -92,12 +97,16 @@ export class GoogleOAuthClient {
         refresh_token: refreshToken,
       }),
     })
-    if (!response.ok) throw new HttpError(502, "provider_error", "Google session could not be refreshed")
+    if (!response.ok) {
+      const failure = await response.json().catch(() => null) as { error?: string } | null
+      if (response.status === 400 && failure?.error === "invalid_grant") throw new GoogleGrantError()
+      throw new HttpError(502, "provider_error", "Google session could not be refreshed")
+    }
     return tokenSchema.omit({ refresh_token: true }).parse(await response.json())
   }
 
   async revoke(refreshToken: string) {
-    const response = await this.fetcher("https://oauth2.googleapis.com/revoke", {
+    const response = await providerFetch(this.fetcher, "https://oauth2.googleapis.com/revoke", {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ token: refreshToken }),

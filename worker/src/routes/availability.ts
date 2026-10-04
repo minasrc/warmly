@@ -10,5 +10,10 @@ availability.use("*", requireUser)
 availability.post("/:planId/candidates", async (context) => {
   const planId = parseId(context.req.param("planId"))
   const { candidates } = await loadPlanCandidates(context.env, context.get("accessToken"), planId)
-  return context.json({ candidates })
+  return context.json({
+    candidates: candidates.map(({ availableParticipantIds, ...candidate }) => ({
+      ...candidate,
+      availableCount: availableParticipantIds.length,
+    })),
+  })
 })

@@ -28,3 +28,10 @@ export function parsePublicEnvironment(source: Record<string, unknown>): PublicE
 export function getPublicEnvironment() {
   return parsePublicEnvironment(import.meta.env)
 }
+
+export function appMode(source: Record<string, unknown>) {
+  const mode = source.VITE_APP_MODE
+  if (mode === "preview" || mode === "live") return mode
+  if (mode !== undefined && mode !== "") throw new Error("VITE_APP_MODE must be live or preview")
+  return source.PROD ? "live" : "preview"
+}

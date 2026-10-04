@@ -4,9 +4,10 @@ import type { AppEnvironment } from "../context"
 import { requireUser } from "../middleware/auth"
 import { HttpError } from "../http-error"
 import { PlanRepository } from "../repositories/plans"
-import { createUserClient } from "../supabase"
+import { createAdminClient, createUserClient } from "../supabase"
 import { parseId, parseJson } from "../validation"
 import { writeAuditEvent } from "../audit"
+import { Temporal } from "@js-temporal/polyfill"
 
 const createPlanSchema = z.object({
   name: z.string().trim().min(1).max(120),
@@ -25,7 +26,13 @@ const createPlanSchema = z.object({
   dayEnd: z.iso.time({ precision: -1 }),
   quorum: z.number().int().min(1).max(50),
   incrementMinutes: z.number().int().min(5).max(120).default(30),
-})
+  allowedDayparts: z.array(z.enum(["morning", "afternoon", "evening"])).max(3).default([]),
+  requireAll: z.boolean().default(true),
+}).refine((input) => {
+  const start = Temporal.PlainDate.from(input.startDate)
+  const end = Temporal.PlainDate.from(input.endDate)
+  return Temporal.PlainDate.compare(end, start) >= 0 && Temporal.PlainDate.compare(end, start.add({ days: 61 })) <= 0
+}, "Choose between 1 and 62 calendar dates").refine((input) => input.dayStart < input.dayEnd, "The daily window must end after it starts")
 
 const planStatusSchema = z.object({
   status: z.enum(["collecting", "cancelled"]),
@@ -34,6 +41,13 @@ const planStatusSchema = z.object({
 export const plans = new Hono<AppEnvironment>()
 
 plans.use("*", requireUser)
+
+plans.get("/", async (context) => {
+  const { data, error } = await createUserClient(context.env, context.get("accessToken"))
+    .from("plans").select("*").eq("host_id", context.get("user").id).order("created_at", { ascending: false }).limit(50)
+  if (error) throw new HttpError(503, "temporarily_unavailable", "Plans could not be loaded")
+  return context.json({ plans: data ?? [] })
+})
 
 plans.post("/", async (context) => {
   const input = await parseJson(context.req.raw, createPlanSchema)
@@ -50,6 +64,8 @@ plans.post("/", async (context) => {
     day_end: input.dayEnd,
     quorum: input.quorum,
     increment_minutes: input.incrementMinutes,
+    allowed_dayparts: input.allowedDayparts,
+    require_all: input.requireAll,
   })
   await writeAuditEvent(context.env, {
     action: "plan.created",
@@ -63,7 +79,39 @@ plans.post("/", async (context) => {
 plans.get("/:planId", async (context) => {
   const planId = parseId(context.req.param("planId"))
   const repository = new PlanRepository(createUserClient(context.env, context.get("accessToken")))
-  return context.json({ plan: await repository.find(planId) })
+  const plan = await repository.find(planId)
+  const { data: host } = await createAdminClient(context.env).from("profiles").select("display_name").eq("id", plan.host_id).maybeSingle()
+  const { data: booking } = await createUserClient(context.env, context.get("accessToken"))
+    .from("bookings").select("starts_at,ends_at").eq("plan_id", planId).eq("status", "created").maybeSingle()
+  return context.json({ plan, hostName: host?.display_name ?? "A friend", bookedMoment: booking ? { startsAt: booking.starts_at, endsAt: booking.ends_at } : null })
+})
+
+plans.get("/:planId/people", async (context) => {
+  const planId = parseId(context.req.param("planId"))
+  const repository = new PlanRepository(createUserClient(context.env, context.get("accessToken")))
+  const plan = await repository.find(planId)
+  if (plan.host_id !== context.get("user").id) throw new HttpError(403, "forbidden", "Only the host can view participant status")
+  const admin = createAdminClient(context.env)
+  const [{ data: members, error: membersError }, { data: invitations, error: invitationsError }] = await Promise.all([
+    admin.from("plan_members").select("user_id,role,profiles(email,display_name)").eq("plan_id", planId).neq("status", "removed"),
+    admin.from("invitations").select("id,email").eq("plan_id", planId).eq("status", "pending"),
+  ])
+  if (membersError || invitationsError) throw new HttpError(503, "temporarily_unavailable", "Participant status could not be loaded")
+  const userIds = (members ?? []).map((member) => member.user_id)
+  const { data: connections, error: connectionsError } = await admin.from("calendar_connections")
+    .select("user_id,selected_calendars(provider_calendar_id)").in("user_id", userIds).eq("status", "active")
+  if (connectionsError) throw new HttpError(503, "temporarily_unavailable", "Participant status could not be loaded")
+  const readyUsers = new Set((connections ?? []).filter((connection) => connection.selected_calendars.length).map((connection) => connection.user_id))
+  const people = (members ?? []).map((member) => {
+    const profile = member.profiles as unknown as { email: string; display_name: string | null }
+    return {
+      userId: member.user_id,
+      email: profile.email,
+      name: profile.display_name,
+      status: member.role === "host" ? "host" : readyUsers.has(member.user_id) ? "ready" : "joined",
+    }
+  })
+  return context.json({ people, invitations })
 })
 
 plans.patch("/:planId/status", async (context) => {
