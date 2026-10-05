@@ -31,7 +31,7 @@ export function GuestFlow({ initialStep, onStepChange, onExit, summary = { hostN
   }
 
   return (
-    <main className="mx-auto grid min-h-dvh w-full max-w-3xl place-items-center px-4 py-8">
+    <main className="mx-auto grid min-h-[calc(100dvh-6rem)] w-full max-w-3xl place-items-center px-4 py-8">
       <Card className="w-full rounded-[2rem] border-border/70 px-2 py-4 shadow-[0_24px_80px_-38px_color-mix(in_oklab,var(--primary)_32%,transparent)] sm:px-6 sm:py-7">
         {initialStep === "invite" ? (
           <>
@@ -70,10 +70,10 @@ export function GuestFlow({ initialStep, onStepChange, onExit, summary = { hostN
                       type="button"
                       aria-pressed={active}
                       onClick={() => toggle(moment.id)}
-                      className={`flex items-center justify-between rounded-2xl border p-4 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-ring ${active ? "border-primary bg-primary/8" : "hover:bg-secondary/50"}`}
+                      className={`flex min-w-0 items-center justify-between gap-3 rounded-2xl border p-4 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-ring ${active ? "border-primary bg-primary/8" : "hover:bg-secondary/50"}`}
                     >
-                      <span><strong className="block font-heading text-lg">{moment.day}</strong><span className="text-sm text-muted-foreground">{moment.note}</span></span>
-                      <span className="flex items-center gap-3 font-semibold text-primary">{moment.time}{active ? <Check className="size-4" /> : null}</span>
+                      <span className="min-w-0"><strong className="block font-heading text-lg">{moment.day}</strong><span className="text-sm text-muted-foreground">{moment.note}</span></span>
+                      <span className="flex shrink-0 items-center gap-2 font-semibold whitespace-nowrap text-primary">{moment.time}{active ? <Check className="size-4" /> : null}</span>
                     </button>
                   )
                 })}
@@ -95,5 +95,5 @@ export function GuestFlow({ initialStep, onStepChange, onExit, summary = { hostN
 }
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
-  return <div className="flex justify-between gap-4 text-sm"><span className="text-muted-foreground">{label}</span><strong>{value}</strong></div>
+  return <div className="flex min-w-0 justify-between gap-4 text-sm"><span className="shrink-0 text-muted-foreground">{label}</span><strong className="min-w-0 text-right">{value}</strong></div>
 }

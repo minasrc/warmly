@@ -67,4 +67,6 @@ Vite emits Cloudflare Pages-compatible `_headers` and `_redirects`: SPA invitati
 
 Configure Supabase Auth's Google provider and frontend redirects, Google Cloud's separate Calendar OAuth client and Worker callback, and Worker bindings before live verification. Do not expose service-role keys or Google secrets through `VITE_*` variables. Hosting/monitoring must redact invitation paths and OAuth query parameters too; app log redaction does not automatically configure infrastructure logs.
 
+See [the launch runbook](docs/LAUNCH.md) for staged setup, the two distinct Google callbacks, secret placement, and real-account acceptance checks. `npm run build:live` requires complete remote HTTPS service configuration and refuses design-preview mode. All builds reject unapproved `VITE_*` fields and server keys in the publishable-key field before bundling; ordinary local builds still work without accounts.
+
 Invitation delivery currently means copying a newly issued private link and sending it yourself. Automatic email delivery requires a provider choice and credentials. The UI says this explicitly.

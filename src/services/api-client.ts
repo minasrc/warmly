@@ -127,6 +127,12 @@ export class ApiClient {
     return this.request<{ connections: CalendarConnection[] }>("/v1/calendar/connections")
   }
 
+  async completeGoogleAuthorization(state: string, code: string) {
+    return this.request<{ connected: true }>("/v1/calendar/google/complete", {
+      method: "POST", body: JSON.stringify({ state, code }),
+    })
+  }
+
   async listProviderCalendars(connectionId: string) {
     return this.request<{ calendars: Array<{ id: string; name: string; primary: boolean }> }>(
       `/v1/calendar/connections/${connectionId}/calendars`,

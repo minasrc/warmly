@@ -50,28 +50,28 @@ export function WarmlyDateRangePicker({ value, onChange, onValidityChange }: Pro
       className="grid gap-2"
     >
       <Label className="text-sm font-semibold">Between which days?</Label>
-      <Group className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 rounded-2xl border bg-card p-2 shadow-sm focus-within:ring-2 focus-within:ring-ring/40 min-[380px]:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto]">
+      <Group className="grid grid-cols-2 items-center gap-2 rounded-2xl border bg-card p-2 shadow-sm focus-within:ring-2 focus-within:ring-ring/40 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto]">
         <DateEndpoint slot="start" onCompletenessChange={endpointChanged} />
-        <span className="text-muted-foreground" aria-hidden>to</span>
+        <span className="hidden text-muted-foreground sm:block" aria-hidden>to</span>
         <DateEndpoint slot="end" onCompletenessChange={endpointChanged} />
-        <Button className="col-span-3 grid size-9 place-items-center justify-self-center rounded-xl text-primary outline-none hover:bg-secondary focus-visible:ring-2 focus-visible:ring-ring min-[380px]:col-span-1">
+        <Button className="col-span-2 grid size-11 place-items-center justify-self-center rounded-xl text-primary outline-none hover:bg-secondary data-focus-visible:ring-2 data-focus-visible:ring-ring sm:col-span-1">
           <CalendarDays className="size-4" aria-hidden />
         </Button>
       </Group>
       <FieldError className="text-sm text-destructive" />
-      <Popover className="w-[min(92vw,22rem)] rounded-3xl border bg-popover p-4 text-popover-foreground shadow-xl outline-none entering:animate-in entering:fade-in exiting:animate-out exiting:fade-out">
+      <Popover className="w-[min(92vw,22rem)] overflow-y-auto rounded-3xl border bg-popover p-4 text-popover-foreground shadow-xl outline-none motion-safe:data-entering:animate-in data-entering:fade-in motion-safe:data-exiting:animate-out data-exiting:fade-out motion-reduce:animate-none">
         <Dialog className="outline-none">
           <RangeCalendar>
             <header className="mb-3 grid grid-cols-[auto_1fr_auto] items-center">
-              <Button slot="previous" className="grid size-9 place-items-center rounded-full hover:bg-secondary focus-visible:ring-2 focus-visible:ring-ring">
+              <Button slot="previous" className="grid size-11 place-items-center rounded-full hover:bg-secondary data-focus-visible:ring-2 data-focus-visible:ring-ring">
                 <ChevronLeft className="size-4" aria-hidden />
               </Button>
               <Heading className="text-center font-heading text-lg font-semibold" />
-              <Button slot="next" className="grid size-9 place-items-center rounded-full hover:bg-secondary focus-visible:ring-2 focus-visible:ring-ring">
+              <Button slot="next" className="grid size-11 place-items-center rounded-full hover:bg-secondary data-focus-visible:ring-2 data-focus-visible:ring-ring">
                 <ChevronRight className="size-4" aria-hidden />
               </Button>
             </header>
-            <CalendarGrid className="w-full border-separate border-spacing-1">
+            <CalendarGrid className="w-full table-fixed border-separate border-spacing-1">
               <CalendarGridHeader>
                 {(day) => <CalendarHeaderCell className="pb-1 text-xs font-medium text-muted-foreground">{day}</CalendarHeaderCell>}
               </CalendarGridHeader>
@@ -79,7 +79,7 @@ export function WarmlyDateRangePicker({ value, onChange, onValidityChange }: Pro
                 {(date) => (
                   <CalendarCell
                     date={date}
-                    className="grid size-9 cursor-pointer place-items-center rounded-full text-sm outline-none outside-month:text-muted-foreground/40 hover:bg-secondary selected:bg-primary selected:text-primary-foreground selection-start:rounded-full selection-end:rounded-full focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
+                    className="grid h-11 w-full cursor-pointer place-items-center rounded-full text-sm outline-none data-outside-month:text-muted-foreground/40 hover:bg-secondary data-selected:bg-primary data-selected:text-primary-foreground data-focus-visible:ring-2 data-focus-visible:ring-ring data-disabled:cursor-not-allowed data-disabled:opacity-40"
                   />
                 )}
               </CalendarGridBody>
@@ -96,7 +96,8 @@ type Endpoint = "start" | "end"
 function DateEndpoint({ slot, onCompletenessChange }: { slot: Endpoint; onCompletenessChange: (endpoint: Endpoint, complete: boolean) => void }) {
   return <DateField<CalendarDate> slot={slot} validationBehavior="native" className="min-w-0">
     {({ state }) => <>
-    <DateInput className="flex min-w-0 justify-center rounded-xl bg-secondary/70 px-1 py-2.5 text-sm min-[380px]:px-3">
+    <span aria-hidden className="block px-1 pb-1 text-xs font-medium text-muted-foreground sm:hidden">{slot === "start" ? "From" : "Until"}</span>
+    <DateInput className="flex min-w-0 justify-center rounded-xl bg-secondary/70 px-1 py-2.5 text-base sm:px-3 sm:text-sm">
       {(segment) => <DateSegment segment={segment} className="rounded px-0.5 outline-none focus:bg-primary focus:text-primary-foreground" />}
     </DateInput>
     <EndpointCompleteness endpoint={slot} complete={state.segments.every((segment) => !segment.isEditable || !segment.isPlaceholder)} onChange={onCompletenessChange} />

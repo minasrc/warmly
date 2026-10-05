@@ -1,4 +1,4 @@
-import { motion } from "motion/react"
+import { motion, useReducedMotion } from "motion/react"
 import { Heart } from "lucide-react"
 
 export function Wordmark() {
@@ -46,8 +46,9 @@ export function FriendPortraits() {
 }
 
 export function Journey({ progress }: { progress: number }) {
+  const reducedMotion = useReducedMotion()
   return (
-    <svg viewBox="0 0 190 74" className="h-16 w-44 text-primary/50" aria-hidden>
+    <svg viewBox="0 0 190 74" className="h-16 w-36 text-primary/50 min-[380px]:w-44" aria-hidden>
       <path
         d="M5 52C31 12 55 70 79 40s43-33 61-7c12 17 29 17 44-8"
         fill="none"
@@ -64,12 +65,12 @@ export function Journey({ progress }: { progress: number }) {
         strokeWidth="2"
         initial={false}
         animate={{ pathLength: progress }}
-        transition={{ duration: 0.6, ease: "easeOut" }}
+        transition={{ duration: reducedMotion ? 0 : 0.6, ease: "easeOut" }}
       />
       <motion.g
         initial={false}
         animate={{ opacity: progress === 1 ? 1 : 0.65 }}
-        transition={{ duration: 0.3 }}
+        transition={{ duration: reducedMotion ? 0 : 0.3 }}
         transform="translate(171 12)"
       >
         <path d="M2 12c6-7 11-8 16-7-4 2-6 5-7 9 4-2 7-2 10-1-6 3-11 4-16 2z" fill="currentColor" />

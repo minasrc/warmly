@@ -15,7 +15,6 @@ export async function rateLimitBucket(namespace: string, identity: string) {
 export const globalRateLimit = createMiddleware<AppEnvironment>(async (context, next) => {
   if (context.req.method === "OPTIONS") return next()
   const address = context.req.header("cf-connecting-ip")
-    ?? context.req.header("x-forwarded-for")?.split(",")[0]?.trim()
     ?? "local"
   const bucket = await rateLimitBucket("global-v1", address)
   const admin = createAdminClient(context.env)

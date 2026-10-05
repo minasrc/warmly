@@ -40,7 +40,7 @@ export function LiveHostFlow({ controller, dark, onDarkChange }: {
   onDarkChange: (dark: boolean) => void
 }) {
   const { identity, ready, error: authError } = useLiveIdentity(controller)
-  const { busy, error, run } = useRequest()
+  const { busy, error, run, clearError } = useRequest()
   const [loadedUserId, setLoadedUserId] = useState("")
   const [bootDoneId, setBootDoneId] = useState("")
   const [bootError, setBootError] = useState("")
@@ -202,11 +202,12 @@ export function LiveHostFlow({ controller, dark, onDarkChange }: {
   })
   const count = connections.reduce((total, connection) => total + connection.selected_calendars.length, 0)
   const currentStep = identity ? step : "sign-in"
+  const pageError = authError || bootError || (confirmCancellation ? "" : error)
 
   return (
     <HostFrame step={currentStep} dark={dark} onDarkChange={onDarkChange}>
       <div className="grid w-full justify-items-center gap-4">
-        {authError || bootError || error ? <p role="alert" className="max-w-xl text-center text-sm text-destructive">{authError || bootError || error}</p> : null}
+        {pageError ? <p role="alert" className="max-w-xl text-center text-sm text-destructive">{pageError}</p> : null}
         {busy || bootLoading || !ready ? <p role="status" className="text-sm text-muted-foreground">Working on it...</p> : null}
         <fieldset disabled={busy || bootLoading || !ready} className="contents">
           {!identity && ready ? <SignIn onContinue={() => run(() => controller.signInWithGoogle(window.location.origin + "/"))} /> : null}
@@ -221,16 +222,17 @@ export function LiveHostFlow({ controller, dark, onDarkChange }: {
           {identity && loaded && (step === "invite" || step === "moments") ? <Button variant="ghost" onClick={() => run(async () => { if (step === "moments") await refreshMoments(planId); else await refreshPeople(planId) })}>Refresh {step === "moments" ? "availability and choices" : "participant status"}</Button> : null}
           {identity && loaded && step === "confirm" && !moments.some((moment) => moment.id === selected) ? <Shell title="That moment is no longer available."><Button onClick={() => setStep("moments")}>Choose another moment</Button></Shell> : null}
           {identity && !busy && !bootLoading ? <div className="flex flex-wrap justify-center gap-2"><Button variant="ghost" onClick={() => run(async () => setPreviousPlans((await controller.api.listPlans()).plans))}>Your plans</Button><Button variant="ghost" onClick={restart}>Start a new plan</Button><Button variant="ghost" onClick={() => run(() => controller.signOut())}>Sign out</Button></div> : null}
-          {identity && loaded && !bookingPending && (step === "invite" || step === "moments") ? <Button variant="ghost" onClick={() => setConfirmCancellation(true)}>Cancel this plan</Button> : null}
-          {previousPlans ? <Shell title="Your plans."><div className="grid gap-2">{previousPlans.length ? previousPlans.map((previous) => <Button key={previous.id} disabled={previous.status === "cancelled"} variant="outline" onClick={() => window.location.assign(`/plans/${previous.id}`)}>{previous.name} · {previous.status}</Button>) : <p className="text-center text-sm text-muted-foreground">No previous plans yet.</p>}<Button variant="ghost" onClick={() => setPreviousPlans(null)}>Close</Button></div></Shell> : null}
+          {identity && loaded && !bookingPending && (step === "invite" || step === "moments") ? <Button variant="ghost" onClick={() => { clearError(); setConfirmCancellation(true) }}>Cancel this plan</Button> : null}
+          {previousPlans ? <Shell title="Your plans."><div className="grid min-w-0 gap-2">{previousPlans.length ? previousPlans.map((previous) => <Button key={previous.id} className="h-auto min-w-0 justify-start py-3 text-left whitespace-normal" disabled={previous.status === "cancelled"} variant="outline" onClick={() => window.location.assign(`/plans/${previous.id}`)}>{previous.name} · {previous.status}</Button>) : <p className="text-center text-sm text-muted-foreground">No previous plans yet.</p>}<Button variant="ghost" onClick={() => setPreviousPlans(null)}>Close</Button></div></Shell> : null}
         </fieldset>
         {identity && loaded ? <p className="text-xs text-muted-foreground">Times in {timeZone}. Pending invitations are not included in calendar events.</p> : null}
       </div>
       <ModalOverlay isOpen={confirmCancellation} onOpenChange={setConfirmCancellation} isDismissable={!busy} className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
-        <Modal className="w-full max-w-md rounded-3xl border bg-background p-6 shadow-lg">
+        <Modal className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-3xl border bg-background p-6 shadow-lg">
           <Dialog role="alertdialog" className="grid gap-4 outline-none">
             <Heading slot="title" className="font-heading text-2xl font-semibold">Cancel this plan?</Heading>
             <p className="text-sm text-muted-foreground">Invitation links will stop accepting people, and guests will no longer be able to submit choices.</p>
+            {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
             <div className="flex justify-end gap-2"><Button disabled={busy} variant="outline" onClick={() => setConfirmCancellation(false)}>Keep plan</Button><Button disabled={busy} onClick={() => run(async () => { await controller.api.cancelPlan(planId); setConfirmCancellation(false); restart() })}>Cancel plan</Button></div>
           </Dialog>
         </Modal>

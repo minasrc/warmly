@@ -22,7 +22,8 @@ export function useRequest() {
       setBusy(false)
     }
   }, [])
-  return { busy, error, run }
+  const clearError = useCallback(() => setError(""), [])
+  return { busy, error, run, clearError }
 }
 
 export function useLiveIdentity(controller: ProductionController) {
@@ -56,4 +57,5 @@ export function restoreCalendarReturn() {
   sessionStorage.removeItem("warmly:calendar-return")
   const safe = path.startsWith("/") && !path.startsWith("//") ? path : "/"
   window.history.replaceState(null, "", safe)
+  return safe
 }
