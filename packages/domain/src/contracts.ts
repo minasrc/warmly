@@ -21,6 +21,7 @@ export type CandidateWindow = {
   dayStart: string
   dayEnd: string
   incrementMinutes: number
+  allowedDayparts?: Daypart[]
 }
 
 export type CandidateRequest = {
@@ -39,6 +40,10 @@ export type CandidateSlot = {
   score: number
 }
 
+export type CandidateMoment = Omit<CandidateSlot, "availableParticipantIds"> & {
+  availableCount: number
+}
+
 export type ApiErrorCode =
   | "bad_request"
   | "unauthorized"
@@ -46,6 +51,8 @@ export type ApiErrorCode =
   | "not_found"
   | "conflict"
   | "provider_error"
+  | "rate_limited"
+  | "temporarily_unavailable"
   | "internal_error"
 
 export type ApiError = {

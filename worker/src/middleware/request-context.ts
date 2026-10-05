@@ -2,7 +2,10 @@ import { createMiddleware } from "hono/factory"
 import type { AppEnvironment } from "../context"
 
 export const requestContext = createMiddleware<AppEnvironment>(async (context, next) => {
-  const requestId = context.req.header("x-request-id") || crypto.randomUUID()
+  const suppliedRequestId = context.req.header("x-request-id")
+  const requestId = suppliedRequestId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(suppliedRequestId)
+    ? suppliedRequestId
+    : crypto.randomUUID()
   const startedAt = Date.now()
   context.set("requestId", requestId)
   context.header("x-request-id", requestId)
@@ -13,9 +16,13 @@ export const requestContext = createMiddleware<AppEnvironment>(async (context, n
     console.log(JSON.stringify({
       requestId,
       method: context.req.method,
-      path: new URL(context.req.url).pathname,
+      path: safeRequestPath(new URL(context.req.url).pathname),
       status: context.res.status,
       durationMs: Date.now() - startedAt,
     }))
   }
 })
+
+export function safeRequestPath(path: string) {
+  return path.replace(/(\/v1\/invitations\/)[^/]+/g, "$1[redacted]")
+}

@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest"
-import { activityPlan, personFromEmail, toggleDaypart } from "./model"
+import { activityPlan, dateRangeError, personFromEmail, toggleDaypart } from "./model"
+import { parseDate } from "@internationalized/date"
 
 describe("scheduling model", () => {
+  it("rejects reversed ranges and more than 62 calendar dates", () => {
+    const start = parseDate("2026-10-25")
+    expect(dateRangeError({ start, end: parseDate("2026-10-16") })).toContain("on or after")
+    expect(dateRangeError({ start, end: start })).toBeNull()
+    expect(dateRangeError({ start, end: start.add({ days: 61 }) })).toBeNull()
+    expect(dateRangeError({ start, end: start.add({ days: 62 }) })).toContain("62 days")
+  })
   it("keeps activity defaults synchronized", () => {
     expect(activityPlan("dinner")).toEqual({
       activityId: "dinner",

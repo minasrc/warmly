@@ -41,3 +41,4 @@ jobs:
           version: 2.119.0
       - run: supabase db start
       - run: supabase db lint --local --level warning
+      - run: supabase test db

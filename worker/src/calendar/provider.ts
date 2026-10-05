@@ -5,6 +5,7 @@ export type ProviderCalendar = {
   name: string
   primary: boolean
   timeZone?: string
+  writable?: boolean
 }
 
 export type FreeBusyRequest = {

@@ -14,8 +14,10 @@ export const requireUser = createMiddleware<AppEnvironment>(async (context, next
   const supabase = createClient(environment.SUPABASE_URL, environment.SUPABASE_PUBLISHABLE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   })
-  const { data, error } = await supabase.auth.getUser(authorization.slice(7))
+  const accessToken = authorization.slice(7)
+  const { data, error } = await supabase.auth.getUser(accessToken)
   if (error || !data.user) throw new HttpError(401, "unauthorized", "Session is invalid or expired")
   context.set("user", data.user)
+  context.set("accessToken", accessToken)
   await next()
 })
