@@ -4,6 +4,7 @@ import type { Bindings } from "./env"
 export type Variables = {
   requestId: string
   user: User
+  accessToken: string
 }
 
 export type AppEnvironment = {

@@ -93,4 +93,18 @@ describe("computeCandidateSlots", () => {
       quorum: 1,
     })).toThrow("Busy interval start must precede end")
   })
+
+  it("applies discontiguous dayparts in the plan timezone", () => {
+    const slots = computeCandidateSlots({ ...baseRequest, window: {
+      ...baseRequest.window, dayStart: "11:00", dayEnd: "19:00", allowedDayparts: ["morning", "evening"],
+    } })
+    expect(slots.map((slot) => new Date(slot.start).getUTCHours())).toEqual([15, 21, 21, 22])
+  })
+
+  it("keeps the whole duration within selected dayparts with an exclusive end boundary", () => {
+    const slots = computeCandidateSlots({ ...baseRequest, window: {
+      ...baseRequest.window, dayStart: "11:00", dayEnd: "13:00", allowedDayparts: ["morning"],
+    } })
+    expect(slots.map((slot) => slot.start)).toEqual(["2026-10-12T15:00:00Z"])
+  })
 })
